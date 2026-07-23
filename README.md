@@ -1,20 +1,36 @@
 # QuietShield Dormant
 
-QuietShield Dormant is an original Android background-app manager with clear per-app choices, conservative Core App protection, music safeguards, group controls, and an optional automatic-closing test engine.
+QuietShield Dormant is an Android background-app manager with per-app sleep and closing choices, conservative Core App protection, group controls, playing-audio protection, and an optional privileged helper.
 
-## Current milestone: v0.1.0-alpha3 R6
+## Current milestone: v0.1.0-alpha4 Wireless
+
+### Wireless activation inside the phone
+
+Alpha 4 adds real on-device Wireless Debugging pairing for Android 11 and newer.
+
+1. Open QuietShield Dormant and tap the switch at the top right.
+2. Allow app activity access.
+3. Open Developer options and turn on Wireless Debugging.
+4. Tap **Pair device with pairing code**.
+5. Return to Dormant and enter the address and pairing port, plus the six-digit code.
+6. Tap **Pair and turn on**.
+
+The app pairs with the user's own phone, connects to Android's Wireless Debugging service, starts the Dormant helper, verifies that it responds, and then closes the ADB connection. No Windows computer or USB cable is required for the normal setup.
+
+The private pairing identity stays in the app's private storage. After a phone restart, turn Wireless Debugging on and tap **Restore automatic closing**. A new six-digit code is normally needed only if Android forgot the pairing, debugging authorizations were revoked, or app data was cleared.
+
+`04_USB_BACKUP_ACTIVATION.bat` remains available only as a development fallback.
 
 ### App list and controls
 
 - Three full-height tabs: **User Apps**, **System Apps**, and **Core Apps**
+- Real installed app icons
 - Search with a visible **×** clear button
-- **Running now** filter while Automatic Closing Setup is available
-- **Select all** and group behavior changes for User Apps and System Apps
-- **Reset this tab** restores only the open tab to **Leave this app alone**
-- Real installed app icons appear beside every listed app
-- **App info** button for every installed app
+- Per-app **Running now** badge and running-only filter while the helper is active
+- **Select all** and group behavior changes
+- **Reset this tab**
+- **App info** for every listed app
 - Core Apps remain visible but read-only
-- Current launcher, keyboard, dialer, Messages app, and QuietShield Dormant are protected dynamically
 
 ### Saved behavior
 
@@ -33,78 +49,43 @@ All apps start as **Leave this app alone** until the user explicitly chooses ano
 
 ### Quick Setting
 
-The **Dormant** Quick Setting turns automatic closing on or pauses it. It shows only **On**, **Paused**, or **Setup needed**. It does not show a notification counter.
-
-### Automatic closing test
-
-The main automatic-closing switch is always clickable. Before setup is complete, tapping it opens a guided setup instead of showing a disabled switch. Alpha 3 includes a USB-activated test helper. It can apply the behavior saved for explicitly selected apps while the helper is responding.
-
-Test order:
-
-1. Build with `01_BUILD_DEBUG.bat`.
-2. Install with `02_INSTALL_DEBUG_TO_PHONE.bat`.
-3. In the app, allow app activity access.
-4. Connect one unlocked phone by USB.
-5. Run `04_ACTIVATE_AUTOMATIC_CLOSING.bat`.
-6. Select a nonessential test app and save **Close only** with a short timer.
-7. Leave the test app and wait for the timer.
-
-To stop the test helper, run `05_STOP_AUTOMATIC_CLOSING.bat`.
-
-This Alpha test does not hide or bypass banking-app security checks. Before opening a banking app, stop the test helper and turn off USB debugging and Developer Options.
-
-## Install-safe testing change
-
-Alpha 3 R6 keeps the install-safe permission set and repairs the main app list layout. Google Play Protect can automatically block file-manager or browser installations of apps that declare this sensitive access. Music protection now uses Android audio activity instead. While audio is playing, automatic management pauses conservatively for apps with media protection enabled. Important-alert inspection is not included in this test build.
+The **Dormant** Quick Setting turns automatic closing on or pauses it. It shows only **On**, **Paused**, or **Setup needed**.
 
 ## Android identity
 
 - Application ID: `com.ajcoder.quietshield.dormant`
 - Debug Application ID: `com.ajcoder.quietshield.dormant.debug`
 - Minimum Android: Android 10 / API 29
+- Wireless pairing: Android 11 or newer
 - Compile SDK: API 36
 - Target SDK: API 36
-- Version: `0.1.0-alpha3-r6`
+- Version: `0.1.0-alpha4-wireless`
 
 ## Build on Windows
 
-Requirements:
+Run the complete installer package or use:
 
-- Android Studio with Android SDK Platform 36
-- Android Studio JBR or JDK 17
-- Git
+```text
+01_BUILD_DEBUG.bat
+```
 
 The debug APK is copied to:
 
 ```text
-release\debug\QuietShield-Dormant-v0.1.0-alpha3-r6-debug.apk
+release\debug\QuietShield-Dormant-v0.1.0-alpha4-wireless-debug.apk
 ```
 
 ## Safety model
 
 - **User Apps:** configurable.
-- **System Apps:** configurable with caution and never changed automatically by classification alone.
+- **System Apps:** configurable with caution.
 - **Core Apps:** visible but permanently locked.
 - No app is managed until the user saves a non-protected behavior.
-- Music and active media are protected conservatively without reading notification content.
-- No automatic app disabling is included in this Alpha.
+- Music and active audio are protected conservatively.
+- No automatic system-app disabling is included.
+- The app does not hide Developer Options or bypass another app's security checks.
+- Automatic closing is shown as active only after the helper responds.
 
-## Development boundaries
+## Important Alpha limitation
 
-- No copied Brevent or Greenify source, branding, assets, or wording.
-- No fake RAM-cleaning or battery-boost percentages.
-- No automatic system-app disabling.
-- No hiding or bypassing banking-app security checks.
-- No claim that automatic closing is active unless the test helper responds.
-
-
-### Alpha 3 R6 interface repair
-
-- Makes the main automatic-closing switch interactive even before setup.
-- Opens a guided setup with the app activity setting and Windows activation instructions.
-- Turns the switch on only after both requirements are verified.
-- Keeps the title and controls below the phone status bar.
-- Removes the disabled Running now chip when setup is unavailable.
-- Shows a separate Running now badge inside every app row when that app is running.
-- Keeps the saved behavior label visible even while the app is running.
-- Uses a tighter group-control area and reduces unused list spacing.
+Wireless Debugging and the embedded ADB library are experimental. The third-party ADB library has not undergone a published security audit. Pair only with a phone you own, keep the pairing-code screen private, and turn Wireless Debugging off when it is not needed.

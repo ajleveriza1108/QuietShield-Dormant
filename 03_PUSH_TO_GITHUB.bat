@@ -11,7 +11,7 @@ if errorlevel 1 (
 
 git add -A || goto failed
 git diff --cached --quiet
-if errorlevel 1 git commit -m "Add automatic closing test, running apps, App Info, and Quick Setting" || goto failed
+if errorlevel 1 git commit -m "QuietShield Dormant Alpha 4: add on-device Wireless Debugging pairing and restore" || goto failed
 git push -u origin main || goto failed
 
 echo [PASS] QuietShield Dormant pushed to GitHub.

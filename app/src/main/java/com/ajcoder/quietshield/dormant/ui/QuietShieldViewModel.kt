@@ -14,6 +14,8 @@ import com.ajcoder.quietshield.dormant.domain.InstalledApp
 import com.ajcoder.quietshield.dormant.domain.ThemeChoice
 import com.ajcoder.quietshield.dormant.engine.DormantEngineClient
 import com.ajcoder.quietshield.dormant.service.DormantMonitorService
+import com.ajcoder.quietshield.dormant.wireless.WirelessActivationManager
+import com.ajcoder.quietshield.dormant.wireless.WirelessActivationResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +30,9 @@ data class RuntimeState(
     val runningPackages: Set<String> = emptySet(),
     val showRunningOnly: Boolean = false,
     val hasUsageAccess: Boolean = false,
+    val wirelessBusy: Boolean = false,
+    val wirelessMessage: String? = null,
+    val hasSavedPairing: Boolean = false,
 )
 
 data class AppUiState(
@@ -42,6 +47,9 @@ data class AppUiState(
     val runningPackages: Set<String> = emptySet(),
     val showRunningOnly: Boolean = false,
     val hasUsageAccess: Boolean = false,
+    val wirelessBusy: Boolean = false,
+    val wirelessMessage: String? = null,
+    val hasSavedPairing: Boolean = false,
 ) {
     val visibleApps: List<InstalledApp>
         get() = apps.filter { app ->
@@ -65,6 +73,7 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
     private val catalogRepository = AppCatalogRepository(application)
     private val policyRepository = PolicyRepository(application)
     private val engineClient = DormantEngineClient(application)
+    private val wirelessActivation = WirelessActivationManager(application)
 
     private val apps = MutableStateFlow<List<InstalledApp>>(emptyList())
     private val selectedSection = MutableStateFlow(AppSection.USER)
@@ -74,6 +83,7 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
     private val runtime = MutableStateFlow(
         RuntimeState(
             hasUsageAccess = hasUsageStatsAccess(application),
+            hasSavedPairing = wirelessActivation.hasSavedPairing(),
         ),
     )
 
@@ -118,6 +128,9 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
             runningPackages = runtimeState.runningPackages,
             showRunningOnly = runtimeState.showRunningOnly,
             hasUsageAccess = runtimeState.hasUsageAccess,
+            wirelessBusy = runtimeState.wirelessBusy,
+            wirelessMessage = runtimeState.wirelessMessage,
+            hasSavedPairing = runtimeState.hasSavedPairing,
         )
     }.stateIn(
         viewModelScope,
@@ -184,6 +197,7 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
         val context = getApplication<Application>()
         runtime.value = runtime.value.copy(
             hasUsageAccess = hasUsageStatsAccess(context),
+            hasSavedPairing = wirelessActivation.hasSavedPairing(),
         )
     }
 
@@ -204,7 +218,7 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
                     return@launch
                 }
                 if (!setupReady) {
-                    errorMessage.value = "Connect the phone to your computer and run 04_ACTIVATE_AUTOMATIC_CLOSING.bat, then tap the switch again."
+                    errorMessage.value = "Complete Wireless setup, then tap the switch again."
                     return@launch
                 }
                 policyRepository.setAutomaticClosing(true)
@@ -219,6 +233,68 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
 
     fun activateAfterSetup() {
         setAutomaticClosing(true)
+    }
+
+    fun pairWireless(pairingAddress: String, pairingCode: String) {
+        if (runtime.value.wirelessBusy) return
+        viewModelScope.launch {
+            runtime.value = runtime.value.copy(
+                wirelessBusy = true,
+                wirelessMessage = "Pairing with this phone…",
+            )
+            val result = wirelessActivation.pairAndStart(
+                pairingAddress = pairingAddress.trim(),
+                pairingCode = pairingCode.trim(),
+            )
+            finishWirelessActivation(result)
+        }
+    }
+
+    fun restoreWireless() {
+        if (runtime.value.wirelessBusy) return
+        viewModelScope.launch {
+            runtime.value = runtime.value.copy(
+                wirelessBusy = true,
+                wirelessMessage = "Restoring automatic closing…",
+            )
+            finishWirelessActivation(wirelessActivation.restoreAndStart())
+        }
+    }
+
+    fun clearWirelessMessage() {
+        runtime.value = runtime.value.copy(wirelessMessage = null)
+    }
+
+    private suspend fun finishWirelessActivation(result: WirelessActivationResult) {
+        val context = getApplication<Application>()
+        when (result) {
+            WirelessActivationResult.Success -> {
+                val hasUsageAccess = hasUsageStatsAccess(context)
+                runtime.value = runtime.value.copy(
+                    wirelessBusy = false,
+                    wirelessMessage = if (hasUsageAccess) {
+                        "Wireless setup is ready. Automatic closing is on."
+                    } else {
+                        "Wireless setup is ready. Allow app activity access to finish."
+                    },
+                    hasSavedPairing = true,
+                    hasUsageAccess = hasUsageAccess,
+                    setupReady = true,
+                )
+                if (hasUsageAccess) {
+                    policyRepository.setAutomaticClosing(true)
+                    DormantMonitorService.start(context)
+                }
+            }
+            is WirelessActivationResult.Failure -> {
+                runtime.value = runtime.value.copy(
+                    wirelessBusy = false,
+                    wirelessMessage = result.message,
+                    hasSavedPairing = wirelessActivation.hasSavedPairing(),
+                )
+            }
+        }
+        updateRuntimeSnapshot()
     }
 
     private suspend fun refreshRuntimeLoop() {
@@ -240,6 +316,7 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
             setupReady = setupReady,
             runningPackages = runningPackages,
             hasUsageAccess = hasUsageStatsAccess(context),
+            hasSavedPairing = wirelessActivation.hasSavedPairing(),
         )
         DormantQuickTileRequest.requestTileRefresh(context)
     }

@@ -1,48 +1,25 @@
-# Architecture
+# QuietShield Dormant Alpha 4 architecture
 
-## App process
+## Normal app process
 
-The normal Android app provides:
+The Compose UI, policy repository, app catalog, and monitor service run as the ordinary QuietShield Dormant application.
 
-- installed-app inventory and classification
-- User Apps, System Apps, and Core Apps screens
-- saved behavior in Preferences DataStore
-- app-activity monitoring after user approval
-- music and active-alert protection after user approval
-- a foreground monitoring service only while automatic closing is on
-- a Quick Setting for on/pause control
+## Wireless activation
 
-## Test helper
+`WirelessActivationManager` uses `libadb-android` to:
 
-Alpha 3 includes a separate shell-level helper started from the Windows USB activation script. The app talks to it only through a loopback socket protected by a random private token.
+1. Pair with the phone's Wireless Debugging service using the user-entered address and pairing port, plus the six-digit code.
+2. Discover and connect to the normal Wireless Debugging service.
+3. Create a private random helper token in the app's private files.
+4. Start `DormantShellMain` through `app_process` with the installed APK as its class path.
+5. Disconnect the temporary ADB session after the local helper responds.
 
-Supported test commands:
+The ADB private key and certificate are stored under the app's private `files/wireless_adb` directory and are not included in Android backup.
 
-- health check
-- list running package processes
-- place an eligible app in standby
-- mark an eligible app active
-- force-stop an eligible app
-- stop the helper
+## Local helper
 
-The helper rejects malformed package names, QuietShield Dormant itself, and known Core packages. The app also loads dynamic Core Apps before monitoring starts, covering the current launcher, keyboard, Phone app, and Messages app.
+`DormantShellMain` runs as Android's shell user and listens only on `127.0.0.1:47531`. Every client must provide the private token before a command. Core package rules are checked again inside the helper.
 
-## Enforcement rules
+## Reboot behavior
 
-- Only explicitly saved policies are evaluated.
-- Protected apps are skipped.
-- Core Apps are skipped.
-- Apps in the foreground are skipped.
-- Always-let-it-work apps are skipped.
-- Smart handling pauses timers for active alerts or active playback.
-- Media Protection pauses timers while media is playing.
-- Automatic closing stops immediately if the helper health check fails.
-
-## Resource design
-
-- No AI model
-- No cloud processing
-- Event-based usage tracking
-- Longer monitoring interval while the screen is off
-- UI process is not kept as a full screen in memory
-- Limited DataStore records
+The helper process ends at reboot. Saved policies and the wireless pairing identity remain. The user turns Wireless Debugging on and taps **Restore automatic closing** to reconnect and restart the helper.

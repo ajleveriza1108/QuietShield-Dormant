@@ -10,9 +10,9 @@ Please report security-sensitive issues privately to the repository owner rather
 - No banking-app integrity bypasses.
 - No hidden Accessibility automation.
 - No silent app disabling.
-- No remote command execution.
+- No internet-facing or LAN-facing command endpoint. The helper listens only on the phone's loopback address and requires a private token.
 - No cloud upload of installed-app inventory or notification contents.
 
 ## Sideload-safe permission policy
 
-The Alpha 3 R6 test build does not declare Notification Listener or Accessibility services. This reduces sideload-install blocking and avoids reading notification content.
+The Alpha 4 Wireless test build does not declare Notification Listener or Accessibility services. This reduces sideload-install blocking and avoids reading notification content.

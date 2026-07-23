@@ -1,35 +1,18 @@
-# QuietShield Dormant Roadmap
+# Roadmap
 
-## v0.1.0-alpha3 — automatic-closing test
+## Alpha 4
 
-- App Info shortcut for every app
-- Dormant Quick Setting without counters
-- Running-app filter backed by the test helper
-- Search clear button
-- USB-activated automatic standby and closing for explicitly configured apps
-- Foreground monitoring with a small status notification
-- Usage and music/alert protection setup
-- Core-app protection before the monitoring loop starts
+- On-phone Wireless Debugging pairing
+- Address and pairing port and six-digit code fields
+- Saved pairing identity
+- Restore-after-reboot action
+- Verified helper startup
+- USB backup activation
 
-## Next safety work
+## Later
 
-- Action history with reasons and timestamps
-- Per-action confirmation mode for System Apps
-- Media-player compatibility testing
-- Samsung, Pixel, Xiaomi, Oppo, Vivo, Realme, and Motorola test matrix
-- Reboot and helper-disconnection recovery
-- Measured RAM and battery profiling
-- Signed optimized release size report
-- Banking-Safe workflow refinement
-
-## Later milestones
-
-- Automatic aggressive recommendations based on measured behavior
-- Optional disable/enable workflow with rollback records
-- Import/export of app behavior
-- Final licensing and updater integration after the engine is stable
-
-## Alpha 3 R2
-
-- Real installed app icons in all three tabs
-- Per-tab reset with confirmation and isolated behavior reset
+- Automatic discovery and filling of the pairing port
+- A compact pairing notification for easier switching from Android Settings
+- Banking-Safe Mode that exits the helper and guides the user to disable Developer Options
+- Signed release builds and APK-size analysis
+- Expanded Samsung and manufacturer safety rules

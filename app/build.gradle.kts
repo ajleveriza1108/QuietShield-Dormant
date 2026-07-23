@@ -11,8 +11,8 @@ android {
         applicationId = "com.ajcoder.quietshield.dormant"
         minSdk = 29
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.1.0-alpha3-r6"
+        versionCode = 8
+        versionName = "0.1.0-alpha4-wireless"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -90,6 +90,11 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.7") {
         version { strictly("1.1.7") }
     }
+
+    // On-device Wireless Debugging pairing and connection.
+    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
+    implementation("com.github.MuntashirAkon:sun-security-android:1.1")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.04.01")
     implementation(composeBom)

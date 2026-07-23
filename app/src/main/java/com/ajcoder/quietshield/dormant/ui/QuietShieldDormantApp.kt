@@ -24,7 +24,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -90,6 +92,8 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
     var showGroupEditor by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var showAutomaticSetupDialog by remember { mutableStateOf(false) }
+    var pairingAddress by remember { mutableStateOf("") }
+    var pairingCode by remember { mutableStateOf("") }
 
     val selectableApps = state.visibleApps.filter { it.section != AppSection.CORE }
     val selectedApps = state.apps.filter { it.packageName in selectedPackages }
@@ -304,14 +308,24 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
 
         if (showAutomaticSetupDialog) {
             AlertDialog(
-                onDismissRequest = { showAutomaticSetupDialog = false },
+                onDismissRequest = {
+                    if (!state.wirelessBusy) {
+                        showAutomaticSetupDialog = false
+                        viewModel.clearWirelessMessage()
+                    }
+                },
                 title = { Text("Turn on automatic closing") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("QuietShield Dormant needs two permissions before it can close selected apps automatically.")
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Set up Wireless Debugging on this phone. A computer and USB cable are not required.")
+
                         if (!state.hasUsageAccess) {
                             Text("1. Allow QuietShield Dormant to see when apps are opened and closed.")
                             OutlinedButton(
+                                enabled = !state.wirelessBusy,
                                 onClick = {
                                     val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
                                         data = Uri.parse("package:${context.packageName}")
@@ -324,23 +338,85 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                         } else {
                             Text("1. App activity access is ready.")
                         }
-                        if (!state.setupReady) {
-                            Text("2. Connect this phone to your Windows computer and run 04_ACTIVATE_AUTOMATIC_CLOSING.bat from the QuietShield Dormant project folder.")
-                        } else {
-                            Text("2. Automatic closing setup is ready.")
+
+                        Text("2. Open Developer options, turn on Wireless Debugging, then tap Pair device with pairing code.")
+                        OutlinedButton(
+                            enabled = !state.wirelessBusy,
+                            onClick = {
+                                context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+                            },
+                        ) {
+                            Text("Open Developer options")
                         }
-                        Text("After completing the steps, tap Check and turn on.")
+
+                        OutlinedTextField(
+                            value = pairingAddress,
+                            onValueChange = { value -> pairingAddress = value.take(64) },
+                            label = { Text("Address and pairing port") },
+                            supportingText = { Text("Enter the address exactly as Android shows it.") },
+                            placeholder = { Text("192.168.1.20:37123") },
+                            enabled = !state.wirelessBusy,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        )
+                        OutlinedTextField(
+                            value = pairingCode,
+                            onValueChange = { value ->
+                                pairingCode = value.filter(Char::isDigit).take(6)
+                            },
+                            label = { Text("Six-digit pairing code") },
+                            enabled = !state.wirelessBusy,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        )
+
+                        if (state.hasSavedPairing) {
+                            OutlinedButton(
+                                enabled = !state.wirelessBusy,
+                                onClick = viewModel::restoreWireless,
+                            ) {
+                                Text("Restore automatic closing")
+                            }
+                        }
+
+                        state.wirelessMessage?.let { message ->
+                            Text(
+                                text = message,
+                                color = if (state.setupReady) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+
+                        if (state.wirelessBusy) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                                Text("Please keep the pairing-code screen open.")
+                            }
+                        }
                     }
                 },
                 confirmButton = {
                     Button(
-                        onClick = { viewModel.setAutomaticClosing(true) },
+                        enabled = !state.wirelessBusy && pairingAddress.contains(':') && pairingCode.length == 6,
+                        onClick = { viewModel.pairWireless(pairingAddress, pairingCode) },
                     ) {
-                        Text("Check and turn on")
+                        Text("Pair and turn on")
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showAutomaticSetupDialog = false }) {
+                    TextButton(
+                        enabled = !state.wirelessBusy,
+                        onClick = {
+                            showAutomaticSetupDialog = false
+                            viewModel.clearWirelessMessage()
+                        },
+                    ) {
                         Text("Not now")
                     }
                 },
