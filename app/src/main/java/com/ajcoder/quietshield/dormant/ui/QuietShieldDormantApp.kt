@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -199,7 +200,7 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                             .weight(1f)
                             .fillMaxWidth()
                             .navigationBarsPadding(),
-                        contentPadding = PaddingValues(bottom = 12.dp),
+                        contentPadding = PaddingValues(bottom = 4.dp),
                     ) {
                         items(
                             items = state.visibleApps,
@@ -298,11 +299,16 @@ private fun AppHeader(
     onAutomaticClosingChanged: (Boolean) -> Unit,
     onAddQuickSetting: () -> Unit,
 ) {
-    Surface(shadowElevation = 2.dp) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+        shadowElevation = 2.dp,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -417,40 +423,42 @@ private fun ListTools(
 ) {
     val selectable = state.selectedSection != AppSection.CORE
     val allSelected = apps.isNotEmpty() && apps.all { it.packageName in selectedPackages }
+    val runningCount = state.apps.count {
+        it.section == state.selectedSection && it.packageName in state.runningPackages
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilterChip(
-                    selected = state.showRunningOnly,
-                    onClick = onRunningOnlyChanged,
-                    enabled = state.setupReady,
-                    label = {
-                        Text(
-                            if (state.setupReady) {
-                                "Running now (${state.apps.count { it.section == state.selectedSection && it.packageName in state.runningPackages }})"
-                            } else {
-                                "Running now"
-                            },
-                        )
-                    },
-                )
-                if (!state.setupReady) {
-                    Spacer(Modifier.width(8.dp))
+                if (state.setupReady) {
+                    FilterChip(
+                        selected = state.showRunningOnly,
+                        onClick = onRunningOnlyChanged,
+                        label = { Text("Show running only ($runningCount)") },
+                    )
+                } else {
                     Text(
-                        text = "Setup needed",
+                        text = "Running status appears after automatic closing setup.",
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.weight(1f))
+                if (state.setupReady) {
+                    Spacer(Modifier.weight(1f))
+                }
                 TextButton(onClick = onResetTab) { Text("Reset this tab") }
             }
+
             if (selectable) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -472,7 +480,7 @@ private fun ListTools(
                         text = "${selectedPackages.size} selected",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                     Button(
                         onClick = onSetBehavior,
                         enabled = selectedPackages.isNotEmpty(),
@@ -496,7 +504,7 @@ private fun AppRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onSelectionChange != null) {
@@ -519,26 +527,62 @@ private fun AppRow(
                 )
                 Text(
                     text = when {
-                        running -> "Running now"
                         app.section == AppSection.CORE -> "Protected"
                         app.section == AppSection.SYSTEM -> "Built-in"
                         policy.aggressive -> "Close sooner"
                         else -> "Installed"
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (running || app.section == AppSection.CORE) {
+                    color = if (app.section == AppSection.CORE) {
                         MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (app.section == AppSection.CORE) "Always left alone" else policySummary(policy),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (running) {
+                    Spacer(Modifier.width(8.dp))
+                    RunningBadge()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RunningBadge() {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primary),
+            )
             Text(
-                text = if (app.section == AppSection.CORE) "Always left alone" else policySummary(policy),
-                style = MaterialTheme.typography.bodySmall,
+                text = "Running now",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
