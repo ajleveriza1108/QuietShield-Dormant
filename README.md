@@ -1,91 +1,74 @@
 # QuietShield Dormant
 
-QuietShield Dormant is an Android background-app manager with per-app sleep and closing choices, conservative Core App protection, group controls, playing-audio protection, and an optional privileged helper.
+QuietShield Dormant is a local Android background-app manager with user-selected sleep and close rules, Wireless Debugging activation, media protection, safety classification, and measured beta results.
 
-## Current milestone: v0.1.0-alpha4 Wireless
+## Current milestone: v0.2.0 Beta 1
 
-### Wireless activation inside the phone
+This beta combines the planned Alpha 4, Alpha 5, Alpha 6, and Beta 1 milestones into one test build:
 
-Alpha 4 adds real on-device Wireless Debugging pairing for Android 11 and newer.
+- On-device Wireless Debugging pairing and restoration
+- USB activation retained only as a development fallback
+- User Apps, System Apps, and Core Apps tabs
+- Real app icons, search clearing, select-all, group behavior, and per-tab reset
+- Runtime labels: Open now, Playing media, Working in background, Kept ready by Android, Sleeping, Closed, and Not running
+- Sleep then close, Sleep only, Close only, and Leave this app alone
+- Background and inactive timers from 1 minute through custom values
+- Media protection and Smart background activity protection
+- Hard protection for core components and active accessibility/device-management services
+- Close-sooner suggestions with Off, Suggest only, and Apply automatically modes
+- Optional manual enable/disable for eligible apps
+- Three-day before-management and managed battery comparison
+- Action history, beta report sharing, and compatibility checks
+- Best-effort restoration after restart when Wireless Debugging is available
+- Dark AMOLED, Dark OLED, Dirty White, and Follow System themes
+- Optimized beta APK with R8 and resource shrinking
 
-1. Open QuietShield Dormant and tap the switch at the top right.
+## Important beta limitation
+
+Automatic closing still requires Android's Wireless Debugging authority. The helper stops when the phone fully restarts and Dormant must restore it. The beta attempts restoration when Android allows it, but the user may still need to turn Wireless Debugging on and tap Restore.
+
+Do not use the first automatic-closing tests on banking apps, authenticators, alarms, the launcher, keyboard, phone, messages, VPN, accessibility services, or health/safety apps.
+
+## Windows build
+
+Run:
+
+```text
+01_BUILD_BETA.bat
+```
+
+The optimized beta APK is copied to:
+
+```text
+releaseeta\QuietShield-Dormant-v0.2.0-beta1.apk
+```
+
+Install it through:
+
+```text
+02_INSTALL_BETA_TO_PHONE.bat
+```
+
+## Wireless setup
+
+1. Open QuietShield Dormant and tap the top-right switch.
 2. Allow app activity access.
-3. Open Developer options and turn on Wireless Debugging.
-4. Tap **Pair device with pairing code**.
-5. Return to Dormant and enter the address and pairing port, plus the six-digit code.
-6. Tap **Pair and turn on**.
+3. Turn on Wireless Debugging.
+4. Choose Pair device with pairing code.
+5. Enter Android's address and six-digit code in Dormant.
+6. Tap Pair and turn on.
 
-The app pairs with the user's own phone, connects to Android's Wireless Debugging service, starts the Dormant helper, verifies that it responds, and then closes the ADB connection. No Windows computer or USB cable is required for the normal setup.
+## Beta testing
 
-The private pairing identity stays in the app's private storage. After a phone restart, turn Wireless Debugging on and tap **Restore automatic closing**. A new six-digit code is normally needed only if Android forgot the pairing, debugging authorizations were revoked, or app data was cleared.
+Follow `docs/BETA_TEST_PLAN.md`. Record phone-brand results in `docs/COMPATIBILITY_MATRIX.md` and use the in-app Results screen to share a local beta report.
 
-`04_USB_BACKUP_ACTIVATION.bat` remains available only as a development fallback.
+## Privacy
 
-### App list and controls
+- No advertising
+- No trackers
+- No cloud behavior analysis
+- Pairing keys stay in the app's private storage
+- Local activity history is capped and can be cleared with app data
+- No Notification Listener permission
 
-- Three full-height tabs: **User Apps**, **System Apps**, and **Core Apps**
-- Real installed app icons
-- Search with a visible **×** clear button
-- Per-app **Running now** badge and running-only filter while the helper is active
-- **Select all** and group behavior changes
-- **Reset this tab**
-- **App info** for every listed app
-- Core Apps remain visible but read-only
-
-### Saved behavior
-
-- Sleep, then close
-- Sleep only
-- Close only
-- Leave this app alone
-- First and second timers: 1, 2, 5, 10, 15, 30, 60 minutes, or custom
-- Always let it work
-- Let it work when needed
-- Do not let it work
-- Keep playing apps active
-- Close this app sooner
-
-All apps start as **Leave this app alone** until the user explicitly chooses another behavior.
-
-### Quick Setting
-
-The **Dormant** Quick Setting turns automatic closing on or pauses it. It shows only **On**, **Paused**, or **Setup needed**.
-
-## Android identity
-
-- Application ID: `com.ajcoder.quietshield.dormant`
-- Debug Application ID: `com.ajcoder.quietshield.dormant.debug`
-- Minimum Android: Android 10 / API 29
-- Wireless pairing: Android 11 or newer
-- Compile SDK: API 36
-- Target SDK: API 36
-- Version: `0.1.0-alpha4-wireless`
-
-## Build on Windows
-
-Run the complete installer package or use:
-
-```text
-01_BUILD_DEBUG.bat
-```
-
-The debug APK is copied to:
-
-```text
-release\debug\QuietShield-Dormant-v0.1.0-alpha4-wireless-debug.apk
-```
-
-## Safety model
-
-- **User Apps:** configurable.
-- **System Apps:** configurable with caution.
-- **Core Apps:** visible but permanently locked.
-- No app is managed until the user saves a non-protected behavior.
-- Music and active audio are protected conservatively.
-- No automatic system-app disabling is included.
-- The app does not hide Developer Options or bypass another app's security checks.
-- Automatic closing is shown as active only after the helper responds.
-
-## Important Alpha limitation
-
-Wireless Debugging and the embedded ADB library are experimental. The third-party ADB library has not undergone a published security audit. Pair only with a phone you own, keep the pairing-code screen private, and turn Wireless Debugging off when it is not needed.
+See `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, and `docs/ARCHITECTURE.md`.

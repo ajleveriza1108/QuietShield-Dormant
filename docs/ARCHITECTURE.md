@@ -1,25 +1,27 @@
-# QuietShield Dormant Alpha 4 architecture
+# Architecture
 
-## Normal app process
+QuietShield Dormant separates the visible app from privileged actions.
 
-The Compose UI, policy repository, app catalog, and monitor service run as the ordinary QuietShield Dormant application.
+## App layer
 
-## Wireless activation
+The Kotlin/Compose app loads installed applications, classifies them into User, System, and Core groups, stores per-app rules, displays runtime states, records beta results, and guides Wireless Debugging setup.
 
-`WirelessActivationManager` uses `libadb-android` to:
+## Wireless setup layer
 
-1. Pair with the phone's Wireless Debugging service using the user-entered address and pairing port, plus the six-digit code.
-2. Discover and connect to the normal Wireless Debugging service.
-3. Create a private random helper token in the app's private files.
-4. Start `DormantShellMain` through `app_process` with the installed APK as its class path.
-5. Disconnect the temporary ADB session after the local helper responds.
+The app generates a private local pairing identity and uses Android's Wireless Debugging pairing flow. After pairing, it connects to the phone's wireless ADB service, starts the small Dormant shell helper, verifies the response, and disconnects the setup session.
 
-The ADB private key and certificate are stored under the app's private `files/wireless_adb` directory and are not included in Android backup.
+## Privileged helper
 
-## Local helper
+The helper listens only on the phone's loopback address and requires a randomly generated private setup token. It performs validated standby, close, enable, disable, and runtime-inspection requests. Static core-package rules are enforced again inside the helper.
 
-`DormantShellMain` runs as Android's shell user and listens only on `127.0.0.1:47531`. Every client must provide the private token before a command. Core package rules are checked again inside the helper.
+## Monitoring
 
-## Reboot behavior
+The foreground monitoring service watches only saved rules and uses adaptive checks rather than continuous one-second scanning. It pauses actions for foreground apps, hard-protected packages, media playback, and allowed useful background work.
 
-The helper process ends at reboot. Saved policies and the wireless pairing identity remain. The user turns Wireless Debugging on and taps **Restore automatic closing** to reconnect and restart the helper.
+## Results
+
+Local beta metrics record capped action history, restart signals, background-service samples, and optional screen-off battery samples. No cloud service or AI model is used.
+
+## Recovery
+
+A small recovery service attempts to restore a saved pairing after restart or app update. Android may still require the user to turn Wireless Debugging on and tap Restore. Dormant never reports automatic closing as active unless the helper responds.

@@ -8,8 +8,10 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -18,12 +20,16 @@ import androidx.core.app.ServiceCompat
 import com.ajcoder.quietshield.dormant.MainActivity
 import com.ajcoder.quietshield.dormant.R
 import com.ajcoder.quietshield.dormant.data.AppCatalogRepository
+import com.ajcoder.quietshield.dormant.data.BetaMetricsRepository
 import com.ajcoder.quietshield.dormant.data.PolicyRepository
 import com.ajcoder.quietshield.dormant.domain.AppPolicy
 import com.ajcoder.quietshield.dormant.domain.AppSection
+import com.ajcoder.quietshield.dormant.domain.AutoAggressiveMode
+import com.ajcoder.quietshield.dormant.domain.SafetyAdvisor
 import com.ajcoder.quietshield.dormant.domain.SleepMode
 import com.ajcoder.quietshield.dormant.domain.SyncMode
 import com.ajcoder.quietshield.dormant.engine.DormantEngineClient
+import com.ajcoder.quietshield.dormant.engine.EngineRuntimeSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,6 +43,7 @@ import kotlinx.coroutines.launch
 class DormantMonitorService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var policyRepository: PolicyRepository
+    private lateinit var metricsRepository: BetaMetricsRepository
     private lateinit var engineClient: DormantEngineClient
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var audioManager: AudioManager
@@ -46,10 +53,13 @@ class DormantMonitorService : Service() {
     private var policies: Map<String, AppPolicy> = emptyMap()
 
     @Volatile
-    private var corePackages: Set<String> = emptySet()
+    private var autoAggressiveMode: AutoAggressiveMode = AutoAggressiveMode.SUGGEST
 
+    private var appSections: Map<String, AppSection> = emptyMap()
+    private var hardProtectedPackages: Set<String> = emptySet()
+    private var runtimeSnapshot = EngineRuntimeSnapshot()
     private var monitorJob: Job? = null
-    private var lastEventTime = System.currentTimeMillis() - 15_000L
+    private var lastEventTime = System.currentTimeMillis() - 30_000L
     private var currentForegroundPackage: String? = null
     private val backgroundSince = mutableMapOf<String, Long>()
     private val actionStates = mutableMapOf<String, ActionState>()
@@ -57,6 +67,7 @@ class DormantMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         policyRepository = PolicyRepository(applicationContext)
+        metricsRepository = BetaMetricsRepository(applicationContext)
         engineClient = DormantEngineClient(applicationContext)
         usageStatsManager = getSystemService(UsageStatsManager::class.java)
         audioManager = getSystemService(AudioManager::class.java)
@@ -68,12 +79,11 @@ class DormantMonitorService : Service() {
         serviceScope.launch {
             policyRepository.policies.collectLatest { policies = it }
         }
+        serviceScope.launch {
+            policyRepository.autoAggressiveMode.collectLatest { autoAggressiveMode = it }
+        }
         monitorJob = serviceScope.launch(Dispatchers.IO) {
-            corePackages = runCatching {
-                AppCatalogRepository(application).loadInstalledApps()
-                    .filter { it.section == AppSection.CORE }
-                    .mapTo(mutableSetOf()) { it.packageName }
-            }.getOrDefault(emptySet())
+            loadSafetyData()
             monitorLoop()
         }
     }
@@ -97,22 +107,76 @@ class DormantMonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private suspend fun loadSafetyData() {
+        val apps = runCatching { AppCatalogRepository(application).loadInstalledApps() }
+            .getOrDefault(emptyList())
+        appSections = apps.associate { it.packageName to it.section }
+        val dynamicHard = SafetyAdvisor(application).snapshot().hardProtected
+        hardProtectedPackages = apps
+            .filter { it.section == AppSection.CORE }
+            .mapTo(mutableSetOf()) { it.packageName }
+            .apply { addAll(dynamicHard) }
+    }
+
     private suspend fun monitorLoop() {
         var lastEngineCheck = 0L
+        var lastRuntimeRefresh = 0L
+        var lastMetricsSnapshot = 0L
+        var lastBatterySample = 0L
+        var lastSafetyRefresh = 0L
+        var lastSuggestionCheck = 0L
+
         while (serviceScope.isActive) {
             val now = System.currentTimeMillis()
-            if (now - lastEngineCheck >= 10_000L) {
+            val interactive = powerManager.isInteractive
+            val engineInterval = if (interactive) 15_000L else 60_000L
+            val runtimeInterval = if (interactive) 15_000L else 45_000L
+
+            if (now - lastEngineCheck >= engineInterval) {
                 lastEngineCheck = now
                 if (!engineClient.ping()) {
-                    policyRepository.setAutomaticClosing(false)
+                    policyRepository.setRuntimeAutomaticClosing(false)
+                    metricsRepository.recordHelper(false, "Automatic closing stopped because its helper did not respond.", now)
                     stopSelf()
                     break
                 }
             }
 
+            if (now - lastRuntimeRefresh >= runtimeInterval) {
+                lastRuntimeRefresh = now
+                runtimeSnapshot = engineClient.runtimeSnapshot()
+            }
+
+            if (now - lastSafetyRefresh >= 5L * 60L * 1_000L) {
+                lastSafetyRefresh = now
+                val dynamicHard = SafetyAdvisor(application).snapshot().hardProtected
+                hardProtectedPackages = hardProtectedPackages + dynamicHard
+            }
+
             readUsageEvents(now)
             applyPolicies(now)
-            delay(if (powerManager.isInteractive) 2_000L else 10_000L)
+
+            if (now - lastMetricsSnapshot >= 60_000L) {
+                lastMetricsSnapshot = now
+                metricsRepository.recordRuntimeSnapshot(
+                    runningPackages = runtimeSnapshot.runningPackages,
+                    activeServicePackages = runtimeSnapshot.activeServicePackages,
+                    screenOn = interactive,
+                    now = now,
+                )
+            }
+
+            if (now - lastBatterySample >= 15L * 60L * 1_000L) {
+                lastBatterySample = now
+                recordBatterySample(now)
+            }
+
+            if (now - lastSuggestionCheck >= 5L * 60L * 1_000L) {
+                lastSuggestionCheck = now
+                applyAutomaticSuggestions(now)
+            }
+
+            delay(calculateNextDelay(now, interactive))
         }
     }
 
@@ -140,38 +204,60 @@ class DormantMonitorService : Service() {
         }
         currentForegroundPackage = packageName
         backgroundSince.remove(packageName)
-        actionStates.remove(packageName)
+        val state = actionStates.remove(packageName)
+        if (state?.standbyApplied == true) runCatching { engineClient.markActive(packageName) }
+        metricsRepository.recordOpened(packageName, time)
     }
 
     private fun onPackageLeft(packageName: String, time: Long) {
         if (packageName == applicationContext.packageName) return
         backgroundSince.putIfAbsent(packageName, time)
-        if (currentForegroundPackage == packageName) {
-            currentForegroundPackage = null
-        }
+        if (currentForegroundPackage == packageName) currentForegroundPackage = null
     }
 
     private suspend fun applyPolicies(now: Long) {
         if (policies.isEmpty()) return
-        val mediaPlaying = isMediaPlaying()
+        val globalAudioActive = runCatching { audioManager.isMusicActive }.getOrDefault(false)
 
-        policies.values.forEach { policy ->
+        policies.values.toList().forEach { policy ->
             val packageName = policy.packageName
-            if (packageName == applicationContext.packageName || packageName in corePackages) return@forEach
-            if (packageName == currentForegroundPackage || policy.sleepMode == SleepMode.PROTECTED) return@forEach
-            if (policy.syncMode == SyncMode.ALLOW) return@forEach
-
-            val protectedNow = policy.mediaProtection && mediaPlaying
-            if (protectedNow) {
-                backgroundSince[packageName] = now
-                actionStates.remove(packageName)
-                return@forEach
+            val section = appSections[packageName]
+            when {
+                packageName == applicationContext.packageName || packageName in hardProtectedPackages -> {
+                    metricsRepository.recordSkipped(packageName, "Always protected by the phone safety list.", now)
+                    return@forEach
+                }
+                packageName == currentForegroundPackage -> return@forEach
+                policy.sleepMode == SleepMode.PROTECTED -> return@forEach
+                policy.syncMode == SyncMode.ALLOW -> {
+                    metricsRepository.recordSkipped(packageName, "Allowed to keep working in the background.", now)
+                    return@forEach
+                }
+                policy.mediaProtection && packageName in runtimeSnapshot.mediaPackages -> {
+                    postpone(packageName, now)
+                    metricsRepository.recordSkipped(packageName, "Left active because it is playing media.", now)
+                    return@forEach
+                }
+                policy.mediaProtection && globalAudioActive &&
+                    packageName in runtimeSnapshot.activeServicePackages -> {
+                    postpone(packageName, now)
+                    metricsRepository.recordSkipped(packageName, "Left active while audio is playing.", now)
+                    return@forEach
+                }
+                policy.syncMode == SyncMode.SMART &&
+                    packageName in runtimeSnapshot.activeServicePackages -> {
+                    postpone(packageName, now)
+                    metricsRepository.recordSkipped(packageName, "Waiting because it is doing useful background work.", now)
+                    return@forEach
+                }
             }
 
             val since = backgroundSince.getOrPut(packageName) { now }
             val elapsed = now - since
             val state = actionStates.getOrPut(packageName) { ActionState() }
-            val effectiveMode = if (policy.aggressive) SleepMode.FORCE_STOP_ONLY else policy.sleepMode
+            val effectiveMode = if (policy.aggressive && section == AppSection.USER) {
+                SleepMode.FORCE_STOP_ONLY
+            } else policy.sleepMode
 
             when (effectiveMode) {
                 SleepMode.PROTECTED -> Unit
@@ -180,6 +266,7 @@ class DormantMonitorService : Service() {
                         if (engineClient.placeInStandby(packageName)) {
                             state.standbyApplied = true
                             state.standbyAt = now
+                            metricsRepository.recordSlept(packageName, now)
                         }
                     }
                 }
@@ -187,6 +274,8 @@ class DormantMonitorService : Service() {
                     if (!state.closed && elapsed >= policy.backgroundTimeoutMinutes.minutes) {
                         if (engineClient.forceStop(packageName)) {
                             state.closed = true
+                            state.closedAt = now
+                            metricsRepository.recordClosed(packageName, now)
                         }
                     }
                 }
@@ -195,6 +284,7 @@ class DormantMonitorService : Service() {
                         if (engineClient.placeInStandby(packageName)) {
                             state.standbyApplied = true
                             state.standbyAt = now
+                            metricsRepository.recordSlept(packageName, now)
                         }
                     }
                     val standbyAt = state.standbyAt
@@ -203,6 +293,8 @@ class DormantMonitorService : Service() {
                     ) {
                         if (engineClient.forceStop(packageName)) {
                             state.closed = true
+                            state.closedAt = now
+                            metricsRepository.recordClosed(packageName, now)
                         }
                     }
                 }
@@ -210,8 +302,65 @@ class DormantMonitorService : Service() {
         }
     }
 
-    private fun isMediaPlaying(): Boolean {
-        return runCatching { audioManager.isMusicActive }.getOrDefault(false)
+    private suspend fun applyAutomaticSuggestions(now: Long) {
+        if (autoAggressiveMode != AutoAggressiveMode.AUTO_APPLY) return
+        val apps = runCatching { AppCatalogRepository(application).loadInstalledApps() }
+            .getOrDefault(emptyList())
+        val suggestions = metricsRepository.suggestions(apps, policies, now)
+        suggestions.values.forEach { suggestion ->
+            val app = apps.firstOrNull { it.packageName == suggestion.packageName } ?: return@forEach
+            val current = policies[suggestion.packageName] ?: AppPolicy.defaultFor(app)
+            if (app.section == AppSection.USER && !current.aggressive && !current.neverSuggestAggressive) {
+                policyRepository.savePolicy(current.copy(aggressive = true))
+                metricsRepository.recordAutoAggressive(
+                    suggestion.packageName,
+                    "Close sooner was applied automatically: ${suggestion.reason}",
+                    now,
+                )
+            }
+        }
+    }
+
+    private fun postpone(packageName: String, now: Long) {
+        backgroundSince[packageName] = now
+        actionStates.remove(packageName)
+    }
+
+    private fun recordBatterySample(now: Long) {
+        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+        val percent = if (level >= 0) (level * 100 / scale) else return
+        metricsRepository.recordBatterySample(
+            level = percent,
+            charging = charging,
+            screenOn = powerManager.isInteractive,
+            managed = true,
+            now = now,
+        )
+    }
+
+    private fun calculateNextDelay(now: Long, interactive: Boolean): Long {
+        val defaultDelay = if (interactive) 15_000L else 60_000L
+        var nearest = defaultDelay
+        policies.values.forEach { policy ->
+            if (policy.sleepMode == SleepMode.PROTECTED || policy.syncMode == SyncMode.ALLOW) return@forEach
+            val since = backgroundSince[policy.packageName] ?: return@forEach
+            val state = actionStates[policy.packageName]
+            val remaining = when {
+                state?.closed == true -> defaultDelay
+                policy.sleepMode == SleepMode.STANDBY_THEN_FORCE_STOP && state?.standbyApplied == true -> {
+                    val standbyAt = state.standbyAt ?: now
+                    policy.inactiveTimeoutMinutes.minutes - (now - standbyAt)
+                }
+                else -> policy.backgroundTimeoutMinutes.minutes - (now - since)
+            }
+            nearest = minOf(nearest, remaining.coerceAtLeast(2_000L))
+        }
+        return nearest.coerceIn(2_000L, defaultDelay)
     }
 
     private fun createNotificationChannel() {
@@ -252,9 +401,7 @@ class DormantMonitorService : Service() {
 
         val type = if (Build.VERSION.SDK_INT >= 34) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else {
-            0
-        }
+        } else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
     }
 
@@ -265,6 +412,7 @@ class DormantMonitorService : Service() {
         var standbyApplied: Boolean = false,
         var standbyAt: Long? = null,
         var closed: Boolean = false,
+        var closedAt: Long? = null,
     )
 
     companion object {

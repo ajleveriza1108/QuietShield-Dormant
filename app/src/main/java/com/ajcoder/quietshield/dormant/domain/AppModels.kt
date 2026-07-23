@@ -9,6 +9,7 @@ enum class AppSection(val title: String) {
 enum class SafetyLevel {
     STANDARD,
     CAUTION,
+    RECOMMENDED_PROTECTION,
     LOCKED,
 }
 
@@ -21,6 +22,7 @@ data class InstalledApp(
     val enabled: Boolean,
     val isCurrentLauncher: Boolean = false,
     val isCurrentInputMethod: Boolean = false,
+    val protectionReason: String? = null,
 )
 
 enum class SleepMode(val label: String, val description: String) {
@@ -49,7 +51,7 @@ enum class SyncMode(val label: String, val description: String) {
     ),
     SMART(
         "Let it work when needed",
-        "Give it extra time before closing it. Playing audio is always protected.",
+        "Wait while the app is doing useful work, then continue its timer.",
     ),
     BLOCK(
         "Do not let it work",
@@ -64,6 +66,37 @@ enum class ThemeChoice(val label: String) {
     SYSTEM("Follow System"),
 }
 
+enum class AutoAggressiveMode(val label: String, val description: String) {
+    OFF(
+        "Off",
+        "Do not look for apps that repeatedly keep themselves active.",
+    ),
+    SUGGEST(
+        "Suggest only",
+        "Show a suggestion and let you decide. This is the recommended choice.",
+    ),
+    AUTO_APPLY(
+        "Apply automatically",
+        "Automatically use Close sooner for eligible User Apps that repeatedly misbehave.",
+    ),
+}
+
+enum class AppRuntimeState(val label: String) {
+    OPEN_NOW("Open now"),
+    PLAYING_MEDIA("Playing media"),
+    WORKING_IN_BACKGROUND("Working in background"),
+    KEPT_READY("Kept ready by Android"),
+    SLEEPING("Sleeping"),
+    CLOSED("Closed"),
+    NOT_RUNNING("Not running"),
+}
+
+data class AggressiveSuggestion(
+    val packageName: String,
+    val reason: String,
+    val score: Int,
+)
+
 data class AppPolicy(
     val packageName: String,
     val sleepMode: SleepMode = SleepMode.PROTECTED,
@@ -72,6 +105,7 @@ data class AppPolicy(
     val syncMode: SyncMode = SyncMode.SMART,
     val mediaProtection: Boolean = true,
     val aggressive: Boolean = false,
+    val neverSuggestAggressive: Boolean = false,
 ) {
     companion object {
         fun defaultFor(app: InstalledApp): AppPolicy = AppPolicy(

@@ -24,6 +24,11 @@ class WirelessActivationManager(private val context: Context) {
     fun hasSavedPairing(): Boolean =
         DormantAdbConnectionManager.hasSavedIdentity(context)
 
+    fun forgetPairing(): Boolean {
+        runCatching { context.filesDir.resolve("engine_token").delete() }
+        return DormantAdbConnectionManager.forgetIdentity(context)
+    }
+
     suspend fun pairAndStart(pairingAddress: String, pairingCode: String): WirelessActivationResult =
         withContext(Dispatchers.IO) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -86,17 +91,24 @@ class WirelessActivationManager(private val context: Context) {
     private suspend fun connectAndStart(
         manager: DormantAdbConnectionManager,
     ): WirelessActivationResult {
-        val connected = try {
-            manager.autoConnect(context, 12_000)
-        } catch (_: AdbPairingRequiredException) {
-            false
-        } catch (_: Throwable) {
-            false
+        if (engineClient.ping()) return WirelessActivationResult.Success
+
+        var connected = false
+        repeat(3) { attempt ->
+            connected = try {
+                manager.autoConnect(context, 8_000)
+            } catch (_: AdbPairingRequiredException) {
+                false
+            } catch (_: Throwable) {
+                false
+            }
+            if (connected) return@repeat
+            if (attempt < 2) delay(1_000L)
         }
         if (!connected) {
             safeDisconnect(manager)
             return WirelessActivationResult.Failure(
-                "QuietShield Dormant could not connect. Keep Wireless Debugging on and open its main screen, then try Restore.",
+                "Dormant could not connect. Keep Wireless Debugging on, return to its main screen, and tap Restore again.",
             )
         }
 
@@ -129,7 +141,7 @@ class WirelessActivationManager(private val context: Context) {
             )
         }
 
-        repeat(8) {
+        repeat(12) {
             delay(500L)
             if (engineClient.ping()) return WirelessActivationResult.Success
         }

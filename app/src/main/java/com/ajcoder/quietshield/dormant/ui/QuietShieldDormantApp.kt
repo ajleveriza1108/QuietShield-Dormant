@@ -69,9 +69,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import com.ajcoder.quietshield.dormant.domain.AggressiveSuggestion
 import com.ajcoder.quietshield.dormant.domain.AppPolicy
+import com.ajcoder.quietshield.dormant.domain.AppRuntimeState
 import com.ajcoder.quietshield.dormant.domain.AppSection
+import com.ajcoder.quietshield.dormant.domain.AutoAggressiveMode
 import com.ajcoder.quietshield.dormant.domain.InstalledApp
+import com.ajcoder.quietshield.dormant.domain.SafetyLevel
 import com.ajcoder.quietshield.dormant.domain.SleepMode
 import com.ajcoder.quietshield.dormant.domain.SyncMode
 import com.ajcoder.quietshield.dormant.domain.ThemeChoice
@@ -92,6 +96,8 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
     var showGroupEditor by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var showAutomaticSetupDialog by remember { mutableStateOf(false) }
+    var showResultsSheet by remember { mutableStateOf(false) }
+    var pendingEnableChange by remember { mutableStateOf<Pair<InstalledApp, Boolean>?>(null) }
     var pairingAddress by remember { mutableStateOf("") }
     var pairingCode by remember { mutableStateOf("") }
 
@@ -107,7 +113,7 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
         state.query,
         state.apps,
         state.showRunningOnly,
-        state.runningPackages,
+        state.engineSnapshot,
     ) {
         val allowedPackages = state.visibleApps
             .filter { it.section != AppSection.CORE }
@@ -134,6 +140,7 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                         }
                     },
                     onAddQuickSetting = { DormantQuickTileRequest.addTile(context) },
+                    onShowResults = { showResultsSheet = true },
                 )
             },
         ) { innerPadding ->
@@ -226,7 +233,8 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                             AppRow(
                                 app = app,
                                 policy = state.policyFor(app),
-                                running = state.isRunning(app),
+                                runtimeState = state.runtimeStateFor(app),
+                                suggestion = state.suggestions[app.packageName],
                                 selected = app.packageName in selectedPackages,
                                 onSelectionChange = if (app.section == AppSection.CORE) {
                                     null
@@ -253,10 +261,19 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                 PolicyEditor(
                     app = app,
                     initialPolicy = state.policyFor(app),
+                    runtimeState = state.runtimeStateFor(app),
+                    suggestion = state.suggestions[app.packageName],
+                    isDisabled = state.isDisabled(app),
+                    canChangeEnabled = state.setupReady,
                     onSave = {
                         viewModel.savePolicy(it)
                         selectedApp = null
                     },
+                    onAcceptSuggestion = { viewModel.acceptSuggestion(app.packageName) },
+                    onDismissSuggestion = { neverAgain ->
+                        viewModel.dismissSuggestion(app.packageName, neverAgain)
+                    },
+                    onSetEnabled = { enabled -> pendingEnableChange = app to enabled },
                     onClose = { selectedApp = null },
                 )
             }
@@ -305,6 +322,56 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
             )
         }
 
+
+        if (showResultsSheet) {
+            ModalBottomSheet(onDismissRequest = { showResultsSheet = false }) {
+                BetaResultsSheet(
+                    state = state,
+                    onAutoAggressiveChanged = viewModel::setAutoAggressiveMode,
+                    onRestoreChanged = viewModel::setRestoreAfterRestart,
+                    onStartBaseline = viewModel::startBaselineTest,
+                    onStopBaseline = viewModel::stopBaselineTest,
+                    onForgetPairing = viewModel::forgetWirelessPairing,
+                    onShareReport = {
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "QuietShield Dormant Beta Report")
+                            putExtra(Intent.EXTRA_TEXT, viewModel.buildBetaReport())
+                        }
+                        context.startActivity(Intent.createChooser(share, "Share beta report"))
+                    },
+                    onClose = { showResultsSheet = false },
+                )
+            }
+        }
+
+        pendingEnableChange?.let { (app, enable) ->
+            AlertDialog(
+                onDismissRequest = { pendingEnableChange = null },
+                title = { Text(if (enable) "Enable ${app.label}?" else "Disable ${app.label}?") },
+                text = {
+                    Text(
+                        if (enable) {
+                            "This app will be available again."
+                        } else {
+                            "The app may disappear and stop working until you enable it again."
+                        },
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.setAppEnabled(app, enable)
+                            pendingEnableChange = null
+                            selectedApp = null
+                        },
+                    ) { Text(if (enable) "Enable" else "Disable") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingEnableChange = null }) { Text("Cancel") }
+                },
+            )
+        }
 
         if (showAutomaticSetupDialog) {
             AlertDialog(
@@ -433,6 +500,7 @@ private fun AppHeader(
     onRefresh: () -> Unit,
     onAutomaticClosingChanged: (Boolean) -> Unit,
     onAddQuickSetting: () -> Unit,
+    onShowResults: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -478,7 +546,8 @@ private fun AppHeader(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(onClick = onRefresh) { Text("Reload") }
-                TextButton(onClick = onAddQuickSetting) { Text("Add Quick Setting") }
+                TextButton(onClick = onAddQuickSetting) { Text("Quick Setting") }
+                TextButton(onClick = onShowResults) { Text("Results") }
                 Spacer(Modifier.weight(1f))
                 ThemeMenu(themeChoice, onThemeSelected)
             }
@@ -559,7 +628,12 @@ private fun ListTools(
     val selectable = state.selectedSection != AppSection.CORE
     val allSelected = apps.isNotEmpty() && apps.all { it.packageName in selectedPackages }
     val runningCount = state.apps.count {
-        it.section == state.selectedSection && it.packageName in state.runningPackages
+        it.section == state.selectedSection && state.runtimeStateFor(it) in setOf(
+            AppRuntimeState.OPEN_NOW,
+            AppRuntimeState.PLAYING_MEDIA,
+            AppRuntimeState.WORKING_IN_BACKGROUND,
+            AppRuntimeState.KEPT_READY,
+        )
     }
 
     Surface(
@@ -630,7 +704,8 @@ private fun ListTools(
 private fun AppRow(
     app: InstalledApp,
     policy: AppPolicy,
-    running: Boolean,
+    runtimeState: AppRuntimeState,
+    suggestion: AggressiveSuggestion?,
     selected: Boolean,
     onSelectionChange: ((Boolean) -> Unit)?,
     onClick: () -> Unit,
@@ -663,33 +738,43 @@ private fun AppRow(
                 Text(
                     text = when {
                         app.section == AppSection.CORE -> "Protected"
-                        app.section == AppSection.SYSTEM -> "Built-in"
+                        app.safetyLevel == SafetyLevel.RECOMMENDED_PROTECTION -> "Protect"
                         policy.aggressive -> "Close sooner"
+                        app.section == AppSection.SYSTEM -> "Built-in"
                         else -> "Installed"
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (app.section == AppSection.CORE) {
+                    color = if (
+                        app.section == AppSection.CORE ||
+                        app.safetyLevel == SafetyLevel.RECOMMENDED_PROTECTION
+                    ) {
                         MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
             }
+            Text(
+                text = if (app.section == AppSection.CORE) "Always left alone" else policySummary(policy),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    text = if (app.section == AppSection.CORE) "Always left alone" else policySummary(policy),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (running) {
-                    Spacer(Modifier.width(8.dp))
-                    RunningBadge()
+                RuntimeBadge(runtimeState)
+                if (suggestion != null && !policy.aggressive) {
+                    Text(
+                        text = "Suggestion: close sooner",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
@@ -697,10 +782,15 @@ private fun AppRow(
 }
 
 @Composable
-private fun RunningBadge() {
+private fun RuntimeBadge(state: AppRuntimeState) {
+    val highlighted = state != AppRuntimeState.NOT_RUNNING
     Surface(
         shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+        color = if (highlighted) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -711,12 +801,19 @@ private fun RunningBadge() {
                 modifier = Modifier
                     .size(7.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(
+                        if (highlighted) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline,
+                    ),
             )
             Text(
-                text = "Running now",
+                text = state.label,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = if (highlighted) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 fontWeight = FontWeight.SemiBold,
             )
         }
@@ -795,7 +892,14 @@ private fun EmptyState(text: String) {
 private fun PolicyEditor(
     app: InstalledApp,
     initialPolicy: AppPolicy,
+    runtimeState: AppRuntimeState,
+    suggestion: AggressiveSuggestion?,
+    isDisabled: Boolean,
+    canChangeEnabled: Boolean,
     onSave: (AppPolicy) -> Unit,
+    onAcceptSuggestion: () -> Unit,
+    onDismissSuggestion: (Boolean) -> Unit,
+    onSetEnabled: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -809,9 +913,24 @@ private fun PolicyEditor(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp),
     ) {
         item {
-            Text(app.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                InstalledAppIcon(app)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        app.label,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    RuntimeBadge(runtimeState)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Text(app.classificationReason, style = MaterialTheme.typography.bodyMedium)
+            app.protectionReason?.let { reason ->
+                Spacer(Modifier.height(10.dp))
+                InfoCard(text = reason, warning = true)
+            }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = {
@@ -841,6 +960,24 @@ private fun PolicyEditor(
                         warning = true,
                     )
                     Spacer(Modifier.height(14.dp))
+                }
+            }
+
+            if (suggestion != null && !draft.aggressive) {
+                item {
+                    InfoCard(
+                        text = "Close sooner may help. ${suggestion.reason}",
+                        warning = false,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        TextButton(onClick = onAcceptSuggestion) { Text("Use it") }
+                        TextButton(onClick = { onDismissSuggestion(false) }) { Text("Not now") }
+                        TextButton(onClick = { onDismissSuggestion(true) }) { Text("Never suggest") }
+                    }
+                    Spacer(Modifier.height(10.dp))
                 }
             }
 
@@ -905,7 +1042,7 @@ private fun PolicyEditor(
                 )
                 SettingSwitch(
                     title = "Close this app sooner",
-                    subtitle = "Use stronger handling when this app keeps running or sends too many alerts.",
+                    subtitle = "Use stronger handling when this app repeatedly returns or keeps working too long.",
                     checked = draft.aggressive,
                     onCheckedChange = { draft = draft.copy(aggressive = it) },
                 )
@@ -914,6 +1051,20 @@ private fun PolicyEditor(
                     onClick = { onSave(draft) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Save changes") }
+                OutlinedButton(
+                    onClick = { onSetEnabled(isDisabled) },
+                    enabled = canChangeEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (isDisabled) "Enable app" else "Disable app")
+                }
+                if (!canChangeEnabled) {
+                    Text(
+                        text = "Turn on automatic closing before enabling or disabling apps.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
             }
         }
@@ -1027,6 +1178,160 @@ private fun GroupPolicyEditor(
         }
     }
 }
+
+@Composable
+private fun BetaResultsSheet(
+    state: AppUiState,
+    onAutoAggressiveChanged: (AutoAggressiveMode) -> Unit,
+    onRestoreChanged: (Boolean) -> Unit,
+    onStartBaseline: () -> Unit,
+    onStopBaseline: () -> Unit,
+    onForgetPairing: () -> Unit,
+    onShareReport: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val summary = state.betaSummary
+    val baselineRunning = state.baselineUntil > System.currentTimeMillis()
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(
+                text = "Beta results",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "These results are measured on this phone. They do not use cloud processing.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+
+        item {
+            SectionTitle("What Dormant has done")
+            Text("Apps put to sleep: ${summary.sleptCount}")
+            Text("Apps closed: ${summary.closedCount}")
+            Text("Actions skipped for safety: ${summary.skippedCount}")
+            Text("Close-sooner suggestions: ${state.suggestions.size}")
+        }
+
+        item {
+            SectionTitle("Screen-off battery use")
+            Text("Before management: ${formatDrain(summary.baselineDrainPerHour)}")
+            Text("With management: ${formatDrain(summary.managedDrainPerHour)}")
+            Spacer(Modifier.height(8.dp))
+            if (baselineRunning) {
+                OutlinedButton(onClick = onStopBaseline) {
+                    Text("Stop before-management test")
+                }
+                Text(
+                    text = "The three-day before-management test is running.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                OutlinedButton(
+                    onClick = onStartBaseline,
+                    enabled = !state.automaticClosing,
+                ) {
+                    Text("Measure before management for 3 days")
+                }
+                Text(
+                    text = if (state.automaticClosing) {
+                        "Pause automatic closing before starting the before-management test."
+                    } else {
+                        "Run this before enabling automatic closing for the clearest comparison."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        item {
+            SectionTitle("Close-sooner suggestions")
+            Text(
+                text = "Dormant looks for User Apps that repeatedly return or keep working too long.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        items(AutoAggressiveMode.entries) { mode ->
+            ChoiceRow(
+                title = mode.label,
+                description = mode.description,
+                selected = state.autoAggressiveMode == mode,
+                onClick = { onAutoAggressiveChanged(mode) },
+            )
+        }
+
+        item {
+            SettingSwitch(
+                title = "Restore after restart",
+                subtitle = "Dormant will try to restore automatic closing after the phone restarts. If Wireless Debugging is off, it will ask you to restore it.",
+                checked = state.restoreAfterRestart,
+                onCheckedChange = onRestoreChanged,
+            )
+        }
+
+        state.compatibility?.let { report ->
+            item {
+                SectionTitle("Phone check")
+                Text(report.deviceSummary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                report.checks.forEach { check ->
+                    Text(
+                        text = "${if (check.ready) "✓" else "•"} ${check.title}: ${check.message}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = report.phoneTip,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.hasSavedPairing) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onForgetPairing) {
+                        Text("Forget wireless setup")
+                    }
+                }
+            }
+        }
+
+        item {
+            SectionTitle("Recent activity")
+            if (state.recentActions.isEmpty()) {
+                Text("No activity has been recorded yet.")
+            } else {
+                state.recentActions.take(20).forEach { event ->
+                    val time = android.text.format.DateFormat.format("MMM d, h:mm a", event.timestamp)
+                    Text(
+                        text = "$time · ${event.detail}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+
+        item {
+            Button(onClick = onShareReport, modifier = Modifier.fillMaxWidth()) {
+                Text("Share beta report")
+            }
+            TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
+                Text("Close")
+            }
+        }
+    }
+}
+
+private fun formatDrain(value: Double?): String =
+    value?.let { String.format(java.util.Locale.US, "%.2f%% per hour", it) }
+        ?: "Not enough samples yet"
 
 @Composable
 private fun InfoCard(

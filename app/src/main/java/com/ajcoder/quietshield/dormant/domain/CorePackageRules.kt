@@ -12,17 +12,30 @@ object CorePackageRules {
         "com.android.providers.media",
         "com.android.providers.downloads",
         "com.android.providers.downloads.ui",
+        "com.android.providers.settings",
+        "com.android.providers.telephony",
+        "com.android.externalstorage",
+        "com.android.documentsui",
+        "com.android.keychain",
+        "com.android.inputdevices",
+        "com.android.bluetooth",
+        "com.android.nfc",
+        "com.android.networkstack",
+        "com.google.android.networkstack",
         "com.android.shell",
         "com.android.phone",
         "com.android.server.telecom",
         "com.google.android.gms",
         "com.google.android.gsf",
+        "com.google.android.modulemetadata",
     )
 
     private val protectedPrefixes = listOf(
         "com.android.internal.",
         "com.android.systemui.",
         "com.android.permission.",
+        "com.android.networkstack.",
+        "com.google.android.networkstack.",
     )
 
     fun isKnownCore(packageName: String): Boolean {

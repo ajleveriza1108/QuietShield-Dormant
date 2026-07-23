@@ -13,6 +13,8 @@ import java.util.concurrent.TimeUnit
 object DormantShellMain {
     private const val DEFAULT_PORT = 47531
     private val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+    private val componentPattern = Regex("([A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+)/[A-Za-z0-9_.$]+")
+    private val packageFieldPattern = Regex("(?:package|packageName)=([A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+)")
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -30,23 +32,19 @@ object DormantShellMain {
             println("QSD_ENGINE_READY:$port")
             System.out.flush()
             while (true) {
-                val shouldContinue = runCatching {
-                    server.accept().use(::handleClient)
-                }.getOrDefault(true)
+                val shouldContinue = runCatching { server.accept().use(::handleClient) }
+                    .getOrDefault(true)
                 if (!shouldContinue) break
             }
         }
     }
 
     private fun handleClient(socket: Socket): Boolean {
-        socket.soTimeout = 15_000
+        socket.soTimeout = 20_000
         val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
         val writer = PrintWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8), true)
         val expectedToken = System.getProperty("qsd.token")
         val suppliedToken = reader.readLine().orEmpty()
-
-        // The launcher passes the token in the first client line and in the process arguments.
-        // The process argument is copied to this property before accepting commands.
         if (expectedToken != null && suppliedToken != expectedToken) {
             writer.println("ERROR Not allowed")
             return true
@@ -62,8 +60,9 @@ object DormantShellMain {
         val packageName = commandLine.substringAfter(' ', "").trim()
         when (command) {
             "PING" -> writer.println("OK PONG")
-            "VERSION" -> writer.println("OK 1")
-            "RUNNING" -> writeRunningPackages(writer)
+            "VERSION" -> writer.println("OK 2")
+            "RUNNING" -> writeSimpleSet(writer, runningPackages())
+            "RUNTIME" -> writeRuntimeSnapshot(writer)
             "STANDBY" -> writeCommandResult(writer, packageName) {
                 runShell("am set-standby-bucket $packageName rare") &&
                     runShell("am set-inactive $packageName true")
@@ -74,6 +73,12 @@ object DormantShellMain {
             }
             "FORCE_STOP" -> writeCommandResult(writer, packageName) {
                 runShell("am force-stop $packageName")
+            }
+            "DISABLE" -> writeCommandResult(writer, packageName) {
+                runShell("pm disable-user --user 0 $packageName")
+            }
+            "ENABLE" -> writeCommandResult(writer, packageName) {
+                runShell("pm enable $packageName")
             }
             "EXIT" -> {
                 writer.println("OK BYE")
@@ -102,20 +107,57 @@ object DormantShellMain {
         return !CorePackageRules.isKnownCore(packageName)
     }
 
-    private fun writeRunningPackages(writer: PrintWriter) {
+    private fun writeSimpleSet(writer: PrintWriter, packages: Set<String>) {
+        writer.println("BEGIN")
+        packages.sorted().forEach(writer::println)
+        writer.println("END")
+    }
+
+    private fun writeRuntimeSnapshot(writer: PrintWriter) {
+        writer.println("BEGIN")
+        runningPackages().sorted().forEach { writer.println("RUNNING\t$it") }
+        activeServicePackages().sorted().forEach { writer.println("SERVICE\t$it") }
+        activeMediaPackages().sorted().forEach { writer.println("MEDIA\t$it") }
+        disabledPackages().sorted().forEach { writer.println("DISABLED\t$it") }
+        writer.println("END")
+    }
+
+    private fun runningPackages(): Set<String> {
         val output = runShellForOutput("ps -A -o NAME")
-        val packages = output.lineSequence()
+        return output.lineSequence()
             .map(String::trim)
             .filter { it.contains('.') }
             .map { it.substringBefore(':') }
             .filter(packagePattern::matches)
-            .distinct()
-            .sorted()
-            .toList()
+            .toSet()
+    }
 
-        writer.println("BEGIN")
-        packages.forEach(writer::println)
-        writer.println("END")
+    private fun activeServicePackages(): Set<String> {
+        val output = runShellForOutput("dumpsys activity services")
+        return buildSet {
+            output.lineSequence().forEach { line ->
+                componentPattern.findAll(line).forEach { match -> add(match.groupValues[1]) }
+                packageFieldPattern.findAll(line).forEach { match -> add(match.groupValues[1]) }
+            }
+        }
+    }
+
+    private fun activeMediaPackages(): Set<String> {
+        val output = runShellForOutput("dumpsys media_session")
+        return buildSet {
+            output.lineSequence().forEach { line ->
+                packageFieldPattern.findAll(line).forEach { match -> add(match.groupValues[1]) }
+                componentPattern.findAll(line).forEach { match -> add(match.groupValues[1]) }
+            }
+        }
+    }
+
+    private fun disabledPackages(): Set<String> {
+        return runShellForOutput("pm list packages -d")
+            .lineSequence()
+            .map { it.removePrefix("package:").trim() }
+            .filter(packagePattern::matches)
+            .toSet()
     }
 
     private fun runShell(command: String): Boolean {
@@ -123,7 +165,7 @@ object DormantShellMain {
             .redirectErrorStream(true)
             .start()
         process.inputStream.bufferedReader().use { it.readText() }
-        if (!process.waitFor(15, TimeUnit.SECONDS)) {
+        if (!process.waitFor(20, TimeUnit.SECONDS)) {
             process.destroyForcibly()
             return false
         }
@@ -136,12 +178,10 @@ object DormantShellMain {
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().use { it.readText() }
-            if (!process.waitFor(15, TimeUnit.SECONDS)) {
+            if (!process.waitFor(20, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 ""
-            } else {
-                output
-            }
+            } else output
         }.getOrDefault("")
     }
 
@@ -149,5 +189,4 @@ object DormantShellMain {
         val index = indexOf(name)
         return if (index >= 0 && index + 1 < size) this[index + 1] else null
     }
-
 }

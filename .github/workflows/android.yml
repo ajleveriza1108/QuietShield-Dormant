@@ -1,4 +1,4 @@
-name: Android CI
+name: Android Beta Validation
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -32,5 +32,5 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Unit tests, lint, and debug APK
-        run: gradle --no-daemon clean test lint assembleDebug
+      - name: Unit tests, beta lint, and optimized beta APK
+        run: gradle --no-daemon clean test lintBeta assembleBeta

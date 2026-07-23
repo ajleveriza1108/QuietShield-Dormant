@@ -103,7 +103,7 @@ try {
     $packageName = 'com.ajcoder.quietshield.dormant.debug'
     $pathOutput = & $adb shell pm path $packageName
     if ($LASTEXITCODE -ne 0 -or -not $pathOutput) {
-        throw 'QuietShield Dormant Alpha 4 debug APK is not installed. Run 02_INSTALL_DEBUG_TO_PHONE.bat first.'
+        throw 'QuietShield Dormant Beta 1 is not installed. Run 02_INSTALL_BETA_TO_PHONE.bat first.'
     }
     $apkPath = (($pathOutput | Select-Object -First 1) -replace '^package:', '').Trim()
     if (-not $apkPath.EndsWith('.apk')) { throw 'The installed APK path could not be read.' }
@@ -117,7 +117,7 @@ try {
     try {
         Invoke-AdbChecked -Adb $adb -Arguments @('push', $temporaryToken, '/data/local/tmp/qsd_engine_token') -FailureMessage 'Unable to copy the private setup key to the phone.'
         Invoke-AdbChecked -Adb $adb -Arguments @('shell', 'chmod', '644', '/data/local/tmp/qsd_engine_token') -FailureMessage 'Unable to prepare the private setup key.'
-        Invoke-AdbChecked -Adb $adb -Arguments @('shell', 'run-as', $packageName, 'mkdir', '-p', 'files') -FailureMessage 'The installed app is not a debug build. Install the Alpha 4 debug APK.'
+        Invoke-AdbChecked -Adb $adb -Arguments @('shell', 'run-as', $packageName, 'mkdir', '-p', 'files') -FailureMessage 'The installed app is not a debug build. Install the Beta 1 APK.'
         Invoke-AdbChecked -Adb $adb -Arguments @('shell', 'run-as', $packageName, 'cp', '/data/local/tmp/qsd_engine_token', 'files/engine_token') -FailureMessage 'Unable to store the private setup key in QuietShield Dormant.'
         & $adb shell rm -f /data/local/tmp/qsd_engine_token | Out-Null
     }
@@ -157,7 +157,7 @@ try {
     Write-Host ''
     Write-Host 'AUTOMATIC CLOSING HELPER IS READY' -ForegroundColor Green
     Write-Host 'Finish the two setup cards in the app. The main switch will turn on when both are allowed.' -ForegroundColor Cyan
-    Write-Host 'This is only the backup method. The normal Alpha 4 setup is Wireless Debugging inside the app. Turning it off or restarting the phone may stop the helper.' -ForegroundColor Yellow
+    Write-Host 'This is only the backup method. The normal Beta 1 setup is Wireless Debugging inside the app. Turning it off or restarting the phone may stop the helper.' -ForegroundColor Yellow
     Write-Host 'Before using a banking app, run 05_STOP_AUTOMATIC_CLOSING.bat, then turn off USB debugging and Developer Options.' -ForegroundColor Yellow
     exit 0
 }

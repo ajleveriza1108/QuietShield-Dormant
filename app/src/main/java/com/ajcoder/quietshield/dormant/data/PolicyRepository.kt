@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ajcoder.quietshield.dormant.domain.AppPolicy
+import com.ajcoder.quietshield.dormant.domain.AutoAggressiveMode
 import com.ajcoder.quietshield.dormant.domain.SleepMode
 import com.ajcoder.quietshield.dormant.domain.SyncMode
 import com.ajcoder.quietshield.dormant.domain.ThemeChoice
@@ -21,6 +23,9 @@ class PolicyRepository(private val context: Context) {
         val theme = stringPreferencesKey("theme")
         val policies = stringPreferencesKey("policies_json")
         val automaticClosing = booleanPreferencesKey("automatic_closing")
+        val restoreAfterRestart = booleanPreferencesKey("restore_after_restart")
+        val autoAggressiveMode = stringPreferencesKey("auto_aggressive_mode")
+        val baselineUntil = longPreferencesKey("baseline_until")
     }
 
     val theme: Flow<ThemeChoice> = context.settingsDataStore.data
@@ -39,12 +44,49 @@ class PolicyRepository(private val context: Context) {
         .catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }
         .map { preferences -> preferences[Keys.automaticClosing] ?: false }
 
+    val restoreAfterRestart: Flow<Boolean> = context.settingsDataStore.data
+        .catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }
+        .map { preferences -> preferences[Keys.restoreAfterRestart] ?: false }
+
+    val baselineUntil: Flow<Long> = context.settingsDataStore.data
+        .catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }
+        .map { preferences -> preferences[Keys.baselineUntil] ?: 0L }
+
+    val autoAggressiveMode: Flow<AutoAggressiveMode> = context.settingsDataStore.data
+        .catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }
+        .map { preferences ->
+            preferences[Keys.autoAggressiveMode]
+                ?.let { runCatching { AutoAggressiveMode.valueOf(it) }.getOrNull() }
+                ?: AutoAggressiveMode.SUGGEST
+        }
+
     suspend fun setTheme(themeChoice: ThemeChoice) {
         context.settingsDataStore.edit { it[Keys.theme] = themeChoice.name }
     }
 
+    /** User action: remembers whether automatic closing should be restored after restart. */
     suspend fun setAutomaticClosing(enabled: Boolean) {
+        context.settingsDataStore.edit {
+            it[Keys.automaticClosing] = enabled
+            it[Keys.restoreAfterRestart] = enabled
+        }
+    }
+
+    /** Runtime state change: keeps the user's restore preference unchanged. */
+    suspend fun setRuntimeAutomaticClosing(enabled: Boolean) {
         context.settingsDataStore.edit { it[Keys.automaticClosing] = enabled }
+    }
+
+    suspend fun setRestoreAfterRestart(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.restoreAfterRestart] = enabled }
+    }
+
+    suspend fun setBaselineUntil(timestamp: Long) {
+        context.settingsDataStore.edit { it[Keys.baselineUntil] = timestamp.coerceAtLeast(0L) }
+    }
+
+    suspend fun setAutoAggressiveMode(mode: AutoAggressiveMode) {
+        context.settingsDataStore.edit { it[Keys.autoAggressiveMode] = mode.name }
     }
 
     suspend fun savePolicy(policy: AppPolicy) {
@@ -55,9 +97,7 @@ class PolicyRepository(private val context: Context) {
         if (updatedPolicies.isEmpty()) return
         context.settingsDataStore.edit { preferences ->
             val current = decodePolicies(preferences[Keys.policies].orEmpty()).toMutableMap()
-            updatedPolicies.forEach { policy ->
-                current[policy.packageName] = policy
-            }
+            updatedPolicies.forEach { policy -> current[policy.packageName] = policy }
             preferences[Keys.policies] = encodePolicies(current)
         }
     }
@@ -67,11 +107,8 @@ class PolicyRepository(private val context: Context) {
         context.settingsDataStore.edit { preferences ->
             val current = decodePolicies(preferences[Keys.policies].orEmpty()).toMutableMap()
             packageNames.forEach(current::remove)
-            if (current.isEmpty()) {
-                preferences.remove(Keys.policies)
-            } else {
-                preferences[Keys.policies] = encodePolicies(current)
-            }
+            if (current.isEmpty()) preferences.remove(Keys.policies)
+            else preferences[Keys.policies] = encodePolicies(current)
         }
     }
 
@@ -87,6 +124,7 @@ class PolicyRepository(private val context: Context) {
                     put("syncMode", policy.syncMode.name)
                     put("mediaProtection", policy.mediaProtection)
                     put("aggressive", policy.aggressive)
+                    put("neverSuggestAggressive", policy.neverSuggestAggressive)
                 },
             )
         }
@@ -106,22 +144,17 @@ class PolicyRepository(private val context: Context) {
                         packageName,
                         AppPolicy(
                             packageName = packageName,
-                            sleepMode = enumOrDefault(
-                                item.optString("sleepMode"),
-                                SleepMode.PROTECTED,
-                            ),
+                            sleepMode = enumOrDefault(item.optString("sleepMode"), SleepMode.PROTECTED),
                             backgroundTimeoutMinutes = item
                                 .optInt("backgroundTimeoutMinutes", 10)
                                 .coerceAtLeast(1),
                             inactiveTimeoutMinutes = item
                                 .optInt("inactiveTimeoutMinutes", 30)
                                 .coerceAtLeast(1),
-                            syncMode = enumOrDefault(
-                                item.optString("syncMode"),
-                                SyncMode.SMART,
-                            ),
+                            syncMode = enumOrDefault(item.optString("syncMode"), SyncMode.SMART),
                             mediaProtection = item.optBoolean("mediaProtection", true),
                             aggressive = item.optBoolean("aggressive", false),
+                            neverSuggestAggressive = item.optBoolean("neverSuggestAggressive", false),
                         ),
                     )
                 }

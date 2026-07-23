@@ -11,6 +11,8 @@ import android.telecom.TelecomManager
 
 class AppClassifier(private val application: Application) {
     private val packageManager = application.packageManager
+    private val safetySnapshot = SafetyAdvisor(application).snapshot()
+    private val safetyAdvisor = SafetyAdvisor(application)
 
     private val ownPackage = application.packageName
     private val launcherPackage: String? by lazy { resolveLauncherPackage() }
@@ -31,7 +33,9 @@ class AppClassifier(private val application: Application) {
             inputMethodPackage -> "This is your current keyboard. Your phone needs it for typing."
             dialerPackage -> "This is your current Phone app. QuietShield Dormant will leave it alone."
             smsPackage -> "This is your current Messages app. QuietShield Dormant will leave it alone."
-            else -> null
+            else -> safetySnapshot.hardProtected.takeIf { packageName in it }?.let {
+                "This app has an important phone control enabled. QuietShield Dormant will leave it alone."
+            }
         }
 
         val knownCore = CorePackageRules.isKnownCore(packageName)
@@ -41,6 +45,9 @@ class AppClassifier(private val application: Application) {
                 AppSection.SYSTEM
             else -> AppSection.USER
         }
+
+        val recommendedReason = safetySnapshot.recommendedProtection[packageName]
+            ?: safetyAdvisor.heuristicProtectionReason(label, packageName)
 
         val reason = when (section) {
             AppSection.CORE -> dynamicCoreReason ?: CorePackageRules.reasonFor(packageName)
@@ -53,15 +60,17 @@ class AppClassifier(private val application: Application) {
             packageName = packageName,
             label = label,
             section = section,
-            safetyLevel = when (section) {
-                AppSection.CORE -> SafetyLevel.LOCKED
-                AppSection.SYSTEM -> SafetyLevel.CAUTION
-                AppSection.USER -> SafetyLevel.STANDARD
+            safetyLevel = when {
+                section == AppSection.CORE -> SafetyLevel.LOCKED
+                recommendedReason != null -> SafetyLevel.RECOMMENDED_PROTECTION
+                section == AppSection.SYSTEM -> SafetyLevel.CAUTION
+                else -> SafetyLevel.STANDARD
             },
             classificationReason = reason,
             enabled = info.enabled,
             isCurrentLauncher = isLauncher,
             isCurrentInputMethod = isInputMethod,
+            protectionReason = recommendedReason,
         )
     }
 

@@ -10,6 +10,13 @@ import java.io.PrintWriter
 import java.net.InetSocketAddress
 import java.net.Socket
 
+data class EngineRuntimeSnapshot(
+    val runningPackages: Set<String> = emptySet(),
+    val activeServicePackages: Set<String> = emptySet(),
+    val mediaPackages: Set<String> = emptySet(),
+    val disabledPackages: Set<String> = emptySet(),
+)
+
 class DormantEngineClient(private val context: Context) {
     companion object {
         const val PORT = 47531
@@ -32,18 +39,49 @@ class DormantEngineClient(private val context: Context) {
         singleResponse("WAKE $packageName").startsWith("OK")
     }
 
-    suspend fun runningPackages(): Set<String> = withContext(Dispatchers.IO) {
-        val token = readToken() ?: return@withContext emptySet()
-        runCatching {
+    suspend fun disableApp(packageName: String): Boolean = withContext(Dispatchers.IO) {
+        singleResponse("DISABLE $packageName").startsWith("OK")
+    }
+
+    suspend fun enableApp(packageName: String): Boolean = withContext(Dispatchers.IO) {
+        singleResponse("ENABLE $packageName").startsWith("OK")
+    }
+
+    suspend fun runtimeSnapshot(): EngineRuntimeSnapshot = withContext(Dispatchers.IO) {
+        val lines = multiResponse("RUNTIME")
+        if (lines.isEmpty()) return@withContext EngineRuntimeSnapshot()
+        val running = mutableSetOf<String>()
+        val services = mutableSetOf<String>()
+        val media = mutableSetOf<String>()
+        val disabled = mutableSetOf<String>()
+        lines.forEach { line ->
+            val kind = line.substringBefore('\t')
+            val packageName = line.substringAfter('\t', "").trim()
+            if (packageName.isBlank()) return@forEach
+            when (kind) {
+                "RUNNING" -> running += packageName
+                "SERVICE" -> services += packageName
+                "MEDIA" -> media += packageName
+                "DISABLED" -> disabled += packageName
+            }
+        }
+        EngineRuntimeSnapshot(running, services, media, disabled)
+    }
+
+    suspend fun runningPackages(): Set<String> = runtimeSnapshot().runningPackages
+
+    private fun multiResponse(command: String): List<String> {
+        val token = readToken() ?: return emptyList()
+        return runCatching {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress("127.0.0.1", PORT), 1_500)
-                socket.soTimeout = 5_000
+                socket.soTimeout = 15_000
                 val writer = PrintWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8), true)
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 writer.println(token)
-                writer.println("RUNNING")
-                if (reader.readLine() != "BEGIN") return@use emptySet<String>()
-                buildSet {
+                writer.println(command)
+                if (reader.readLine() != "BEGIN") return@use emptyList<String>()
+                buildList {
                     while (true) {
                         val line = reader.readLine() ?: break
                         if (line == "END") break
@@ -51,7 +89,7 @@ class DormantEngineClient(private val context: Context) {
                     }
                 }
             }
-        }.getOrDefault(emptySet())
+        }.getOrDefault(emptyList())
     }
 
     private fun singleResponse(command: String): String {

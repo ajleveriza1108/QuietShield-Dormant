@@ -1,18 +1,24 @@
-# Security Policy
+# Security and safety
 
-QuietShield Dormant is intended to control other applications only after explicit user configuration and only through documented, visible operating modes.
+QuietShield Dormant Beta 1 is experimental software with privileged control available only after the user deliberately completes Wireless Debugging setup.
 
-Please report security-sensitive issues privately to the repository owner rather than publishing device-specific bypass details in a public issue.
+## Safety boundaries
 
-## Non-negotiable protections
+- Core Apps are visible but permanently locked.
+- Current launcher, keyboard, phone, messages, active accessibility services, device-management services, and Dormant itself are protected.
+- System Apps require caution and are never automatically classified as aggressive.
+- Automatic Close sooner applies only to eligible User Apps.
+- Media-protected apps are not managed while playback is detected.
+- A missing or unresponsive helper immediately turns automatic closing off.
+- Disable/enable actions require explicit confirmation.
+- The app never hides Developer Options or bypasses another app's security check.
 
-- Core Apps are blocked at both UI and future engine layers.
-- No banking-app integrity bypasses.
-- No hidden Accessibility automation.
-- No silent app disabling.
-- No internet-facing or LAN-facing command endpoint. The helper listens only on the phone's loopback address and requires a private token.
-- No cloud upload of installed-app inventory or notification contents.
+## Wireless identity
 
-## Sideload-safe permission policy
+The Wireless Debugging RSA key and certificate are generated locally and stored in private app storage. Use Results > Forget wireless setup to remove them.
 
-The Alpha 4 Wireless test build does not declare Notification Listener or Accessibility services. This reduces sideload-install blocking and avoids reading notification content.
+## Reporting
+
+Do not post pairing codes, private keys, account information, banking information, or full personal notification content in issue reports. Beta reports contain package names and Dormant activity, so review them before sharing publicly.
+
+Report security concerns privately to the repository owner rather than opening a public issue containing sensitive details.

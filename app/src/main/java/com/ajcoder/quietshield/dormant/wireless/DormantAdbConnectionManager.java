@@ -72,6 +72,29 @@ public final class DormantAdbConnectionManager extends AbsAdbConnectionManager {
         return new File(directory, PRIVATE_KEY).isFile() && new File(directory, CERTIFICATE).isFile();
     }
 
+    public static synchronized boolean forgetIdentity(@NonNull Context context) {
+        if (instance != null) {
+            try {
+                instance.disconnect();
+            } catch (Throwable ignored) {
+            }
+            instance = null;
+        }
+        File directory = new File(context.getFilesDir(), KEY_DIR);
+        return deleteRecursively(directory);
+    }
+
+    private static boolean deleteRecursively(@NonNull File file) {
+        if (!file.exists()) return true;
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                if (!deleteRecursively(child)) return false;
+            }
+        }
+        return file.delete();
+    }
+
     private final PrivateKey privateKey;
     private final Certificate certificate;
 
@@ -91,7 +114,7 @@ public final class DormantAdbConnectionManager extends AbsAdbConnectionManager {
         }
 
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048, SecureRandom.getInstance("SHA1PRNG"));
+        generator.initialize(2048, new SecureRandom());
         KeyPair keyPair = generator.generateKeyPair();
         privateKey = keyPair.getPrivate();
         certificate = generateCertificate(keyPair.getPublic(), privateKey);

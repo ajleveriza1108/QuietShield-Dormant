@@ -1,11 +1,14 @@
 package com.ajcoder.quietshield.dormant.service
 
 import android.app.AppOpsManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Process
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
+import com.ajcoder.quietshield.dormant.MainActivity
 import com.ajcoder.quietshield.dormant.data.PolicyRepository
 import com.ajcoder.quietshield.dormant.engine.DormantEngineClient
 import kotlinx.coroutines.CoroutineScope
@@ -38,14 +41,30 @@ class DormantQuickTileService : TileService() {
 
             when {
                 !ready -> {
-                    repository.setAutomaticClosing(false)
+                    repository.setRuntimeAutomaticClosing(false)
                     DormantMonitorService.stop(applicationContext)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             applicationContext,
-                            "Open QuietShield Dormant and finish setup.",
+                            "Open Dormant to restore automatic closing.",
                             Toast.LENGTH_LONG,
                         ).show()
+                        val pendingIntent = PendingIntent.getActivity(
+                            applicationContext,
+                            0,
+                            Intent(applicationContext, MainActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        )
+                        if (android.os.Build.VERSION.SDK_INT >= 34) {
+                            startActivityAndCollapse(pendingIntent)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            startActivityAndCollapse(
+                                Intent(applicationContext, MainActivity::class.java)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
                     }
                 }
                 enabled -> {
@@ -90,14 +109,14 @@ class DormantQuickTileService : TileService() {
     private fun updateTileState(ready: Boolean, enabled: Boolean) {
         val tile = qsTile ?: return
         tile.state = when {
-            !ready -> Tile.STATE_UNAVAILABLE
+            !ready -> Tile.STATE_INACTIVE
             enabled -> Tile.STATE_ACTIVE
             else -> Tile.STATE_INACTIVE
         }
         tile.label = "Dormant"
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             tile.subtitle = when {
-                !ready -> "Setup needed"
+                !ready -> "Restore"
                 enabled -> "On"
                 else -> "Paused"
             }

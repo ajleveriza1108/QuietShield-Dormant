@@ -11,8 +11,8 @@ android {
         applicationId = "com.ajcoder.quietshield.dormant"
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.1.0-alpha4-wireless"
+        versionCode = 9
+        versionName = "0.2.0-beta1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -30,6 +30,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+        create("beta") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-test"
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
         }
     }
 

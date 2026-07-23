@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 
 git show-ref --verify --quiet refs/heads/main
@@ -11,14 +11,14 @@ if errorlevel 1 (
 
 git add -A || goto failed
 git diff --cached --quiet
-if errorlevel 1 git commit -m "QuietShield Dormant Alpha 4: add on-device Wireless Debugging pairing and restore" || goto failed
+if errorlevel 1 git commit -m "QuietShield Dormant v0.2.0 Beta 1: wireless control, safety, results, and recovery" || goto failed
 git push -u origin main || goto failed
 
-echo [PASS] QuietShield Dormant pushed to GitHub.
+echo [PASS] QuietShield Dormant Beta 1 pushed to GitHub.
 pause
 exit /b 0
 
 :failed
-echo [FAILED] GitHub push failed. Review the message above.
+echo [FAILED] GitHub push failed. The validated local source remains available.
 pause
 exit /b 1
