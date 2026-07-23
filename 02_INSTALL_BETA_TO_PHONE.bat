@@ -16,7 +16,7 @@ if errorlevel 1 if not exist "%ADB%" (
   exit /b 1
 )
 
-set "APK=release\beta\QuietShield-Dormant-v0.2.0-beta1.apk"
+set "APK=release\beta\QuietShield-Dormant-v0.2.0-beta1-r2.apk"
 if not exist "%APK%" (
   echo [FAILED] Build the beta APK first using 01_BUILD_BETA.bat.
   pause
@@ -24,7 +24,7 @@ if not exist "%APK%" (
 )
 
 echo ============================================================
-echo QuietShield Dormant v0.2.0 Beta 1 Phone Installation
+echo QuietShield Dormant v0.2.0 Beta 1 R2 Phone Installation
 echo ============================================================
 "%ADB%" devices
 "%ADB%" install -r "%APK%"
@@ -34,7 +34,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [PASS] QuietShield Dormant Beta 1 installed.
+echo [PASS] QuietShield Dormant Beta 1 R2 installed.
 echo Open the app and use Wireless setup for normal automatic closing.
 pause
 exit /b 0

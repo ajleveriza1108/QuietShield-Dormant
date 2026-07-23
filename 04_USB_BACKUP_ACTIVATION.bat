@@ -23,7 +23,7 @@ if not exist "%SCRIPT%" (
 )
 
 echo ============================================================
-echo QuietShield Dormant v0.2.0 Beta 1 USB Backup Activation
+echo QuietShield Dormant v0.2.0 Beta 1 R2 USB Backup Activation
 echo Windows PowerShell 5.1 compatibility preflight
 echo ============================================================
 

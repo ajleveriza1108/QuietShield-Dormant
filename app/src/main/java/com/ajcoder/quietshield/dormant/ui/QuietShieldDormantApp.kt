@@ -1,8 +1,13 @@
 package com.ajcoder.quietshield.dormant.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -68,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.ajcoder.quietshield.dormant.domain.AggressiveSuggestion
 import com.ajcoder.quietshield.dormant.domain.AppPolicy
@@ -82,6 +88,7 @@ import com.ajcoder.quietshield.dormant.domain.ThemeChoice
 import com.ajcoder.quietshield.dormant.domain.formatMinutes
 import com.ajcoder.quietshield.dormant.domain.policySummary
 import com.ajcoder.quietshield.dormant.ui.theme.QuietShieldDormantTheme
+import com.ajcoder.quietshield.dormant.wireless.WirelessPairingService
 
 private val timeoutPresets = listOf(1, 2, 5, 10, 15, 30, 60)
 
@@ -98,11 +105,36 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
     var showAutomaticSetupDialog by remember { mutableStateOf(false) }
     var showResultsSheet by remember { mutableStateOf(false) }
     var pendingEnableChange by remember { mutableStateOf<Pair<InstalledApp, Boolean>?>(null) }
-    var pairingAddress by remember { mutableStateOf("") }
-    var pairingCode by remember { mutableStateOf("") }
+    var notificationPermissionDenied by remember { mutableStateOf(false) }
 
     val selectableApps = state.visibleApps.filter { it.section != AppSection.CORE }
     val selectedApps = state.apps.filter { it.packageName in selectedPackages }
+
+    fun openWirelessPairingScreen() {
+        WirelessPairingService.start(context)
+        WirelessPairingService.openWirelessDebugging(context)
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        notificationPermissionDenied = !granted
+        if (granted) openWirelessPairingScreen()
+    }
+
+    fun beginWirelessPairing() {
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            notificationPermissionDenied = false
+            openWirelessPairingScreen()
+        }
+    }
 
     LaunchedEffect(state.automaticClosing) {
         if (state.automaticClosing) showAutomaticSetupDialog = false
@@ -387,7 +419,7 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                         modifier = Modifier.verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text("Set up Wireless Debugging on this phone. A computer and USB cable are not required.")
+                        Text("Wireless setup happens on this phone. You do not need a computer or USB cable.")
 
                         if (!state.hasUsageAccess) {
                             Text("1. Allow QuietShield Dormant to see when apps are opened and closed.")
@@ -406,36 +438,23 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                             Text("1. App activity access is ready.")
                         }
 
-                        Text("2. Open Developer options, turn on Wireless Debugging, then tap Pair device with pairing code.")
-                        OutlinedButton(
+                        Text("2. Open Wireless Debugging and choose Pair device with pairing code.")
+                        Text("3. Keep that screen open. Dormant finds the changing port automatically.")
+                        Text("4. Enter only the 6-digit code in the Dormant notification, then tap Pair.")
+
+                        Button(
                             enabled = !state.wirelessBusy,
-                            onClick = {
-                                context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-                            },
+                            onClick = ::beginWirelessPairing,
                         ) {
-                            Text("Open Developer options")
+                            Text("Open Wireless Debugging")
                         }
 
-                        OutlinedTextField(
-                            value = pairingAddress,
-                            onValueChange = { value -> pairingAddress = value.take(64) },
-                            label = { Text("Address and pairing port") },
-                            supportingText = { Text("Enter the address exactly as Android shows it.") },
-                            placeholder = { Text("192.168.1.20:37123") },
-                            enabled = !state.wirelessBusy,
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        )
-                        OutlinedTextField(
-                            value = pairingCode,
-                            onValueChange = { value ->
-                                pairingCode = value.filter(Char::isDigit).take(6)
-                            },
-                            label = { Text("Six-digit pairing code") },
-                            enabled = !state.wirelessBusy,
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        )
+                        if (notificationPermissionDenied) {
+                            Text(
+                                "Allow Dormant notifications so the 6-digit code can be entered without leaving Wireless Debugging.",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
 
                         if (state.hasSavedPairing) {
                             OutlinedButton(
@@ -463,20 +482,12 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 CircularProgressIndicator(modifier = Modifier.size(22.dp))
-                                Text("Please keep the pairing-code screen open.")
+                                Text("Restoring automatic closing…")
                             }
                         }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        enabled = !state.wirelessBusy && pairingAddress.contains(':') && pairingCode.length == 6,
-                        onClick = { viewModel.pairWireless(pairingAddress, pairingCode) },
-                    ) {
-                        Text("Pair and turn on")
-                    }
-                },
-                dismissButton = {
                     TextButton(
                         enabled = !state.wirelessBusy,
                         onClick = {
@@ -484,9 +495,10 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                             viewModel.clearWirelessMessage()
                         },
                     ) {
-                        Text("Not now")
+                        Text("Close")
                     }
                 },
+                dismissButton = {},
             )
         }
     }

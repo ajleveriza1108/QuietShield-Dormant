@@ -1,6 +1,6 @@
 # QuietShield Dormant roadmap
 
-## Completed in v0.2.0 Beta 1
+## Completed in v0.2.0 Beta 1 R2
 
 - Wireless pairing and helper restoration
 - Accurate, user-friendly runtime states

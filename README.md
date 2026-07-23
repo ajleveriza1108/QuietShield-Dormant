@@ -2,7 +2,7 @@
 
 QuietShield Dormant is a local Android background-app manager with user-selected sleep and close rules, Wireless Debugging activation, media protection, safety classification, and measured beta results.
 
-## Current milestone: v0.2.0 Beta 1
+## Current milestone: v0.2.0 Beta 1 R2
 
 This beta combines the planned Alpha 4, Alpha 5, Alpha 6, and Beta 1 milestones into one test build:
 
@@ -40,7 +40,7 @@ Run:
 The optimized beta APK is copied to:
 
 ```text
-releaseeta\QuietShield-Dormant-v0.2.0-beta1.apk
+release\beta\QuietShield-Dormant-v0.2.0-beta1-r2.apk
 ```
 
 Install it through:
@@ -55,8 +55,8 @@ Install it through:
 2. Allow app activity access.
 3. Turn on Wireless Debugging.
 4. Choose Pair device with pairing code.
-5. Enter Android's address and six-digit code in Dormant.
-6. Tap Pair and turn on.
+5. Keep the pairing-code screen open.
+6. Enter only the six-digit code in the Dormant notification and tap Pair.
 
 ## Beta testing
 

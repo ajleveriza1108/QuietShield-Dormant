@@ -25,3 +25,7 @@ Local beta metrics record capped action history, restart signals, background-ser
 ## Recovery
 
 A small recovery service attempts to restore a saved pairing after restart or app update. Android may still require the user to turn Wireless Debugging on and tap Restore. Dormant never reports automatic closing as active unless the helper responds.
+## Automatic wireless pairing discovery
+
+A short-lived foreground service uses Android network service discovery to watch for the temporary `_adb-tls-pairing._tcp.` service while the system pairing-code screen is open. The changing address and port stay internal. A direct-reply notification accepts only the six-digit code, pairs the private Dormant identity, discovers the normal secure connection, starts the helper, and then stops the pairing service.
+

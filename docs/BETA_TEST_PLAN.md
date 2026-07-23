@@ -1,4 +1,4 @@
-# QuietShield Dormant v0.2.0 Beta 1 test plan
+# QuietShield Dormant v0.2.0 Beta 1 R2 test plan
 
 Use a secondary or carefully backed-up phone first. Begin with harmless shopping apps or games.
 
@@ -14,7 +14,8 @@ Use a secondary or carefully backed-up phone first. Begin with harmless shopping
 
 - Grant app activity access.
 - Turn on Wireless Debugging and open Pair device with pairing code.
-- Enter the address and six-digit code.
+- Keep the pairing-code screen open. Dormant should find the changing port automatically.
+- Enter only the six-digit code in the Dormant notification and tap Pair.
 - Confirm Automatic closing is on.
 - Turn the screen off for five minutes, return, and confirm the helper is still ready.
 

@@ -13,7 +13,7 @@ if not defined JAVA_HOME (
 )
 
 echo ============================================================
-echo QuietShield Dormant v0.2.0 Beta 1 Build
+echo QuietShield Dormant v0.2.0 Beta 1 R2 Build
 echo Optimized, installable beta APK
 echo ============================================================
 
@@ -22,7 +22,7 @@ if errorlevel 1 goto failed
 
 set "BUILT_APK=app\build\outputs\apk\beta\app-beta.apk"
 set "RELEASE_DIR=release\beta"
-set "RELEASE_APK=%RELEASE_DIR%\QuietShield-Dormant-v0.2.0-beta1.apk"
+set "RELEASE_APK=%RELEASE_DIR%\QuietShield-Dormant-v0.2.0-beta1-r2.apk"
 
 if not exist "%BUILT_APK%" (
   echo [FAILED] Expected beta APK was not produced: %BUILT_APK%

@@ -29,43 +29,47 @@ class WirelessActivationManager(private val context: Context) {
         return DormantAdbConnectionManager.forgetIdentity(context)
     }
 
-    suspend fun pairAndStart(pairingAddress: String, pairingCode: String): WirelessActivationResult =
-        withContext(Dispatchers.IO) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                return@withContext WirelessActivationResult.Failure(
-                    "Wireless setup requires Android 11 or newer.",
-                )
-            }
-            val endpoint = parsePairingAddress(pairingAddress)
-                ?: return@withContext WirelessActivationResult.Failure(
-                    "Enter the address and port shown by Android, such as 192.168.1.20:37123.",
-                )
-            if (!pairingCode.matches(Regex("\\d{6}"))) {
-                return@withContext WirelessActivationResult.Failure(
-                    "Enter the six-digit pairing code shown by Android.",
-                )
-            }
-
-            val manager = runCatching {
-                DormantAdbConnectionManager.getInstance(context)
-            }.getOrElse {
-                return@withContext WirelessActivationResult.Failure(
-                    "QuietShield Dormant could not prepare its private pairing identity.",
-                )
-            }
-
-            val paired = runCatching {
-                manager.pair(endpoint.first, endpoint.second, pairingCode)
-            }.getOrDefault(false)
-            if (!paired) {
-                safeDisconnect(manager)
-                return@withContext WirelessActivationResult.Failure(
-                    "Pairing did not complete. Keep Android's pairing-code screen open and try again.",
-                )
-            }
-
-            connectAndStart(manager)
+    suspend fun pairAndStart(
+        host: String,
+        port: Int,
+        pairingCode: String,
+    ): WirelessActivationResult = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return@withContext WirelessActivationResult.Failure(
+                "Wireless setup requires Android 11 or newer.",
+            )
         }
+        if (host.isBlank() || port !in 1..65535) {
+            return@withContext WirelessActivationResult.Failure(
+                "Dormant could not find Android's current pairing screen.",
+            )
+        }
+        if (!pairingCode.matches(Regex("\\d{6}"))) {
+            return@withContext WirelessActivationResult.Failure(
+                "Enter the six-digit pairing code shown by Android.",
+            )
+        }
+
+        val manager = runCatching {
+            DormantAdbConnectionManager.getInstance(context)
+        }.getOrElse {
+            return@withContext WirelessActivationResult.Failure(
+                "QuietShield Dormant could not prepare its private pairing identity.",
+            )
+        }
+
+        val paired = runCatching {
+            manager.pair(host, port, pairingCode)
+        }.getOrDefault(false)
+        if (!paired) {
+            safeDisconnect(manager)
+            return@withContext WirelessActivationResult.Failure(
+                "Pairing did not complete. Keep Android's pairing-code screen open and try again.",
+            )
+        }
+
+        connectAndStart(manager)
+    }
 
     suspend fun restoreAndStart(): WirelessActivationResult = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -159,19 +163,6 @@ class WirelessActivationManager(private val context: Context) {
         }
     }
 
-
-    private fun parsePairingAddress(value: String): Pair<String, Int>? {
-        val trimmed = value.trim()
-        val separator = trimmed.lastIndexOf(':')
-        if (separator <= 0 || separator == trimmed.lastIndex) return null
-        val host = trimmed.substring(0, separator)
-            .removePrefix("[")
-            .removeSuffix("]")
-            .trim()
-        val port = trimmed.substring(separator + 1).trim().toIntOrNull() ?: return null
-        if (host.isBlank() || port !in 1..65535) return null
-        return host to port
-    }
 
     private fun safeDisconnect(manager: DormantAdbConnectionManager) {
         runCatching { manager.disconnect() }

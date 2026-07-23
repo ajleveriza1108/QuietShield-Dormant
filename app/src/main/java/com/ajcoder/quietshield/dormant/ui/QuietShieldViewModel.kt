@@ -323,19 +323,6 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
         setAutomaticClosing(true)
     }
 
-    fun pairWireless(pairingAddress: String, pairingCode: String) {
-        if (runtime.value.wirelessBusy) return
-        viewModelScope.launch {
-            runtime.value = runtime.value.copy(
-                wirelessBusy = true,
-                wirelessMessage = "Pairing with this phone…",
-            )
-            finishWirelessActivation(
-                wirelessActivation.pairAndStart(pairingAddress.trim(), pairingCode.trim()),
-            )
-        }
-    }
-
     fun restoreWireless() {
         if (runtime.value.wirelessBusy) return
         viewModelScope.launch {

@@ -1,6 +1,6 @@
 # Security and safety
 
-QuietShield Dormant Beta 1 is experimental software with privileged control available only after the user deliberately completes Wireless Debugging setup.
+QuietShield Dormant Beta 1 R2 is experimental software with privileged control available only after the user deliberately completes Wireless Debugging setup.
 
 ## Safety boundaries
 
