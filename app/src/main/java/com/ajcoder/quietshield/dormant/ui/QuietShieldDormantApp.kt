@@ -3,6 +3,7 @@ package com.ajcoder.quietshield.dormant.ui
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,16 +22,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -53,11 +56,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import com.ajcoder.quietshield.dormant.domain.AppPolicy
 import com.ajcoder.quietshield.dormant.domain.AppSection
 import com.ajcoder.quietshield.dormant.domain.InstalledApp
@@ -75,14 +83,22 @@ private val timeoutPresets = listOf(1, 2, 5, 10, 15, 30, 60)
 fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
     val themeChoice by viewModel.theme.collectAsState()
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     var selectedApp by remember { mutableStateOf<InstalledApp?>(null) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showGroupEditor by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
 
     val selectableApps = state.visibleApps.filter { it.section != AppSection.CORE }
     val selectedApps = state.apps.filter { it.packageName in selectedPackages }
 
-    LaunchedEffect(state.selectedSection, state.query, state.apps) {
+    LaunchedEffect(
+        state.selectedSection,
+        state.query,
+        state.apps,
+        state.showRunningOnly,
+        state.runningPackages,
+    ) {
         val allowedPackages = state.visibleApps
             .filter { it.section != AppSection.CORE }
             .mapTo(mutableSetOf()) { it.packageName }
@@ -94,9 +110,12 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
         Scaffold(
             topBar = {
                 AppHeader(
+                    state = state,
                     themeChoice = themeChoice,
                     onThemeSelected = viewModel::setTheme,
                     onRefresh = viewModel::refreshApps,
+                    onAutomaticClosingChanged = viewModel::setAutomaticClosing,
+                    onAddQuickSetting = { DormantQuickTileRequest.addTile(context) },
                 )
             },
         ) { innerPadding ->
@@ -106,7 +125,17 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                     .padding(innerPadding),
             ) {
                 if (!state.hasUsageAccess) {
-                    SimpleSetupBanner(onPermissionReturned = viewModel::refreshPermissionState)
+                    UsageSetupBanner(onPermissionReturned = viewModel::refreshPermissionState)
+                }
+                if (!state.hasNotificationAccess) {
+                    AlertSetupBanner(onPermissionReturned = viewModel::refreshPermissionState)
+                }
+                state.errorMessage?.let { message ->
+                    InfoCard(
+                        text = message,
+                        warning = true,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
                 }
 
                 OutlinedTextField(
@@ -117,6 +146,18 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     label = { Text("Search apps") },
                     singleLine = true,
+                    trailingIcon = if (state.query.isNotEmpty()) {
+                        {
+                            IconButton(
+                                onClick = viewModel::clearQuery,
+                                modifier = Modifier.semantics { contentDescription = "Clear search" },
+                            ) {
+                                Text("×", style = MaterialTheme.typography.headlineSmall)
+                            }
+                        }
+                    } else {
+                        null
+                    },
                 )
 
                 val sections = AppSection.entries
@@ -134,25 +175,28 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                     }
                 }
 
-                if (state.selectedSection != AppSection.CORE && !state.loading) {
-                    SelectionBar(
-                        apps = selectableApps,
-                        selectedPackages = selectedPackages,
-                        onSelectAll = {
-                            selectedPackages = selectableApps.mapTo(mutableSetOf()) { it.packageName }
-                        },
-                        onClear = { selectedPackages = emptySet() },
-                        onSetBehavior = { showGroupEditor = true },
-                    )
-                }
+                ListTools(
+                    state = state,
+                    apps = selectableApps,
+                    selectedPackages = selectedPackages,
+                    onRunningOnlyChanged = viewModel::toggleRunningOnly,
+                    onSelectAll = {
+                        selectedPackages = selectableApps.mapTo(mutableSetOf()) { it.packageName }
+                    },
+                    onClear = { selectedPackages = emptySet() },
+                    onSetBehavior = { showGroupEditor = true },
+                    onResetTab = { showResetDialog = true },
+                )
 
                 when {
                     state.loading -> LoadingState()
-                    state.errorMessage != null -> ErrorState(
-                        message = state.errorMessage,
-                        onRetry = viewModel::refreshApps,
+                    state.visibleApps.isEmpty() -> EmptyState(
+                        text = if (state.showRunningOnly) {
+                            "No apps are running in this section."
+                        } else {
+                            "No apps found."
+                        },
                     )
-                    state.visibleApps.isEmpty() -> EmptyState()
                     else -> LazyColumn(
                         modifier = Modifier
                             .weight(1f)
@@ -167,6 +211,7 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                             AppRow(
                                 app = app,
                                 policy = state.policyFor(app),
+                                running = state.isRunning(app),
                                 selected = app.packageName in selectedPackages,
                                 onSelectionChange = if (app.section == AppSection.CORE) {
                                     null
@@ -215,36 +260,90 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                 )
             }
         }
+
+        if (showResetDialog) {
+            val section = state.selectedSection
+            AlertDialog(
+                onDismissRequest = { showResetDialog = false },
+                title = { Text("Reset ${section.title}?") },
+                text = {
+                    Text(
+                        if (section == AppSection.CORE) {
+                            "Core Apps are always left alone. This will clear any saved changes in this tab."
+                        } else {
+                            "Every app in ${section.title} will return to Leave this app alone. Other tabs will not change."
+                        },
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.resetSection(section)
+                            selectedPackages = emptySet()
+                            showResetDialog = false
+                        },
+                    ) { Text("Reset") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showResetDialog = false }) { Text("Cancel") }
+                },
+            )
+        }
     }
 }
 
 @Composable
 private fun AppHeader(
+    state: AppUiState,
     themeChoice: ThemeChoice,
     onThemeSelected: (ThemeChoice) -> Unit,
     onRefresh: () -> Unit,
+    onAutomaticClosingChanged: (Boolean) -> Unit,
+    onAddQuickSetting: () -> Unit,
 ) {
     Surface(shadowElevation = 2.dp) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "QuietShield Dormant",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "Test build · Automatic closing is not active yet",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "QuietShield Dormant",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = when {
+                            state.automaticClosing -> "Automatic closing is on"
+                            state.setupReady -> "Automatic closing is paused"
+                            else -> "Automatic closing needs setup"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (state.automaticClosing) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                Switch(
+                    checked = state.automaticClosing,
+                    onCheckedChange = onAutomaticClosingChanged,
+                    enabled = state.setupReady && state.hasUsageAccess && state.hasNotificationAccess,
                 )
             }
-            TextButton(onClick = onRefresh) { Text("Reload") }
-            ThemeMenu(themeChoice, onThemeSelected)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onRefresh) { Text("Reload") }
+                TextButton(onClick = onAddQuickSetting) { Text("Add Quick Setting") }
+                Spacer(Modifier.weight(1f))
+                ThemeMenu(themeChoice, onThemeSelected)
+            }
         }
     }
 }
@@ -277,7 +376,7 @@ private fun ThemeMenu(
 }
 
 @Composable
-private fun SimpleSetupBanner(onPermissionReturned: () -> Unit) {
+private fun UsageSetupBanner(onPermissionReturned: () -> Unit) {
     val context = LocalContext.current
     Surface(
         modifier = Modifier
@@ -291,7 +390,7 @@ private fun SimpleSetupBanner(onPermissionReturned: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Allow QuietShield Dormant to see when apps were last used.",
+                text = "Allow QuietShield Dormant to see when apps open and close.",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -309,45 +408,109 @@ private fun SimpleSetupBanner(onPermissionReturned: () -> Unit) {
 }
 
 @Composable
-private fun SelectionBar(
+private fun AlertSetupBanner(onPermissionReturned: () -> Unit) {
+    val context = LocalContext.current
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Allow QuietShield Dormant to recognize music, downloads, and important alerts.",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(
+                onClick = {
+                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                },
+            ) { Text("Set up") }
+            TextButton(onClick = onPermissionReturned) { Text("Check") }
+        }
+    }
+}
+
+@Composable
+private fun ListTools(
+    state: AppUiState,
     apps: List<InstalledApp>,
     selectedPackages: Set<String>,
+    onRunningOnlyChanged: () -> Unit,
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
     onSetBehavior: () -> Unit,
+    onResetTab: () -> Unit,
 ) {
+    val selectable = state.selectedSection != AppSection.CORE
     val allSelected = apps.isNotEmpty() && apps.all { it.packageName in selectedPackages }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(
-                checked = allSelected,
-                onCheckedChange = { checked -> if (checked) onSelectAll() else onClear() },
-                enabled = apps.isNotEmpty(),
-            )
-            TextButton(
-                onClick = { if (allSelected) onClear() else onSelectAll() },
-                enabled = apps.isNotEmpty(),
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(if (allSelected) "Clear all" else "Select all")
+                FilterChip(
+                    selected = state.showRunningOnly,
+                    onClick = onRunningOnlyChanged,
+                    enabled = state.setupReady,
+                    label = {
+                        Text(
+                            if (state.setupReady) {
+                                "Running now (${state.apps.count { it.section == state.selectedSection && it.packageName in state.runningPackages }})"
+                            } else {
+                                "Running now"
+                            },
+                        )
+                    },
+                )
+                if (!state.setupReady) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Setup needed",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onResetTab) { Text("Reset this tab") }
             }
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "${selectedPackages.size} selected",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = onSetBehavior,
-                enabled = selectedPackages.isNotEmpty(),
-            ) { Text("Set behavior") }
+            if (selectable) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = allSelected,
+                        onCheckedChange = { checked -> if (checked) onSelectAll() else onClear() },
+                        enabled = apps.isNotEmpty(),
+                    )
+                    TextButton(
+                        onClick = { if (allSelected) onClear() else onSelectAll() },
+                        enabled = apps.isNotEmpty(),
+                    ) {
+                        Text(if (allSelected) "Clear all" else "Select all")
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "${selectedPackages.size} selected",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = onSetBehavior,
+                        enabled = selectedPackages.isNotEmpty(),
+                    ) { Text("Set behavior") }
+                }
+            }
         }
     }
 }
@@ -356,6 +519,7 @@ private fun SelectionBar(
 private fun AppRow(
     app: InstalledApp,
     policy: AppPolicy,
+    running: Boolean,
     selected: Boolean,
     onSelectionChange: ((Boolean) -> Unit)?,
     onClick: () -> Unit,
@@ -374,19 +538,7 @@ private fun AppRow(
             )
             Spacer(Modifier.width(4.dp))
         }
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = app.label.firstOrNull()?.uppercase() ?: "?",
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
+        InstalledAppIcon(app)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -398,13 +550,15 @@ private fun AppRow(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = when (app.section) {
-                        AppSection.CORE -> "Protected"
-                        AppSection.SYSTEM -> "Built-in"
-                        AppSection.USER -> if (policy.aggressive) "Close sooner" else "Installed"
+                    text = when {
+                        running -> "Running now"
+                        app.section == AppSection.CORE -> "Protected"
+                        app.section == AppSection.SYSTEM -> "Built-in"
+                        policy.aggressive -> "Close sooner"
+                        else -> "Installed"
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (app.section == AppSection.CORE) {
+                    color = if (running || app.section == AppSection.CORE) {
                         MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -417,6 +571,42 @@ private fun AppRow(
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun InstalledAppIcon(app: InstalledApp) {
+    val context = LocalContext.current
+    val image = remember(app.packageName) {
+        runCatching {
+            context.packageManager
+                .getApplicationIcon(app.packageName)
+                .toBitmap(width = 48, height = 48)
+                .asImageBitmap()
+        }.getOrNull()
+    }
+
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = "${app.label} icon",
+                modifier = Modifier.size(40.dp),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            Text(
+                text = app.label.firstOrNull()?.uppercase() ?: "?",
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
     }
@@ -448,9 +638,9 @@ private fun ErrorState(message: String?, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(text: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("No apps found.")
+        Text(text)
     }
 }
 
@@ -461,6 +651,7 @@ private fun PolicyEditor(
     onSave: (AppPolicy) -> Unit,
     onClose: () -> Unit,
 ) {
+    val context = LocalContext.current
     var draft by remember(app.packageName, initialPolicy) { mutableStateOf(initialPolicy) }
 
     LazyColumn(
@@ -474,6 +665,15 @@ private fun PolicyEditor(
             Text(app.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
             Text(app.classificationReason, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:${app.packageName}")
+                    }
+                    runCatching { context.startActivity(intent) }
+                },
+            ) { Text("App info") }
             Spacer(Modifier.height(16.dp))
         }
 
@@ -682,8 +882,13 @@ private fun GroupPolicyEditor(
 }
 
 @Composable
-private fun InfoCard(text: String, warning: Boolean) {
+private fun InfoCard(
+    text: String,
+    warning: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Surface(
+        modifier = modifier,
         shape = RoundedCornerShape(14.dp),
         color = if (warning) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
     ) {

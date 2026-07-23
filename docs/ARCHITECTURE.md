@@ -1,43 +1,48 @@
 # Architecture
 
-## Layers
+## App process
 
-### Domain
+The normal Android app provides:
 
-Pure models and safety rules:
+- installed-app inventory and classification
+- User Apps, System Apps, and Core Apps screens
+- saved behavior in Preferences DataStore
+- app-activity monitoring after user approval
+- music and active-alert protection after user approval
+- a foreground monitoring service only while automatic closing is on
+- a Quick Setting for on/pause control
 
-- `InstalledApp`
-- `AppPolicy`
-- `CorePackageRules`
-- sleep, sync, section, and theme enums
+## Test helper
 
-### Data
+Alpha 3 includes a separate shell-level helper started from the Windows USB activation script. The app talks to it only through a loopback socket protected by a random private token.
 
-- `AppCatalogRepository`: loads packages through PackageManager.
-- `PolicyRepository`: persists themes and per-package policy records through Preferences DataStore.
+Supported test commands:
 
-### UI
+- health check
+- list running package processes
+- place an eligible app in standby
+- mark an eligible app active
+- force-stop an eligible app
+- stop the helper
 
-- `QuietShieldViewModel`: coordinates app inventory, policy data, search, tabs, and permission status.
-- `QuietShieldDormantApp`: Compose UI, policy editor, theme controls, and three-tab inventory.
+The helper rejects malformed package names, QuietShield Dormant itself, and known Core packages. The app also loads dynamic Core Apps before monitoring starts, covering the current launcher, keyboard, Phone app, and Messages app.
 
-## Future privileged boundary
+## Enforcement rules
 
-Privileged commands must not be implemented directly inside Compose screens or the catalog repository. A future `EngineClient` interface will expose a small allowlisted command set:
+- Only explicitly saved policies are evaluated.
+- Protected apps are skipped.
+- Core Apps are skipped.
+- Apps in the foreground are skipped.
+- Always-let-it-work apps are skipped.
+- Smart handling pauses timers for active alerts or active playback.
+- Media Protection pauses timers while media is playing.
+- Automatic closing stops immediately if the helper health check fails.
 
-- `setStandby(packageName)`
-- `forceStop(packageName)`
-- `setEnabled(packageName, enabled)`
-- `queryState(packageName)`
-- `healthCheck()`
+## Resource design
 
-Every command must pass through a safety gate that independently rejects Core Apps. The privileged process must repeat the same rejection rather than trusting UI validation alone.
-
-## Classification order
-
-1. Dynamic device roles: own app, launcher, keyboard, dialer, SMS.
-2. Known Android core rules.
-3. Android system/update flags.
-4. Ordinary user application.
-
-This order prevents a downloaded launcher or keyboard from being treated as an ordinary manageable User App.
+- No AI model
+- No cloud processing
+- Event-based usage tracking
+- Longer monitoring interval while the screen is off
+- UI process is not kept as a full screen in memory
+- Limited DataStore records

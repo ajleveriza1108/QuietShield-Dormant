@@ -49,7 +49,7 @@ enum class SyncMode(val label: String, val description: String) {
     ),
     SMART(
         "Let it work when needed",
-        "Allow important activity, but stop unnecessary background work.",
+        "Leave it alone while it is playing, downloading, or showing an important alert.",
     ),
     BLOCK(
         "Do not let it work",
@@ -66,7 +66,7 @@ enum class ThemeChoice(val label: String) {
 
 data class AppPolicy(
     val packageName: String,
-    val sleepMode: SleepMode = SleepMode.STANDBY_THEN_FORCE_STOP,
+    val sleepMode: SleepMode = SleepMode.PROTECTED,
     val backgroundTimeoutMinutes: Int = 10,
     val inactiveTimeoutMinutes: Int = 30,
     val syncMode: SyncMode = SyncMode.SMART,
@@ -74,22 +74,13 @@ data class AppPolicy(
     val aggressive: Boolean = false,
 ) {
     companion object {
-        fun defaultFor(app: InstalledApp): AppPolicy = when (app.section) {
-            AppSection.CORE -> AppPolicy(
-                packageName = app.packageName,
-                sleepMode = SleepMode.PROTECTED,
-                syncMode = SyncMode.ALLOW,
-                mediaProtection = true,
-            )
-            AppSection.SYSTEM -> AppPolicy(
-                packageName = app.packageName,
-                sleepMode = SleepMode.STANDBY_ONLY,
-                backgroundTimeoutMinutes = 30,
-                inactiveTimeoutMinutes = 60,
-                syncMode = SyncMode.SMART,
-                mediaProtection = true,
-            )
-            AppSection.USER -> AppPolicy(packageName = app.packageName)
-        }
+        fun defaultFor(app: InstalledApp): AppPolicy = AppPolicy(
+            packageName = app.packageName,
+            sleepMode = SleepMode.PROTECTED,
+            backgroundTimeoutMinutes = if (app.section == AppSection.SYSTEM) 30 else 10,
+            inactiveTimeoutMinutes = if (app.section == AppSection.SYSTEM) 60 else 30,
+            syncMode = if (app.section == AppSection.CORE) SyncMode.ALLOW else SyncMode.SMART,
+            mediaProtection = true,
+        )
     }
 }

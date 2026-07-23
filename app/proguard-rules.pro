@@ -1,2 +1,4 @@
-# QuietShield Dormant currently uses platform and Jetpack APIs only.
-# Keep rules will be added alongside future privileged-engine integrations.
+# Keep the USB-activated helper entry point in optimized release builds.
+-keep class com.ajcoder.quietshield.dormant.engine.DormantShellMain {
+    public static void main(java.lang.String[]);
+}

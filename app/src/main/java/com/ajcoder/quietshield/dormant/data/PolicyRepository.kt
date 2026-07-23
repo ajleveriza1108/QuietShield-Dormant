@@ -1,6 +1,7 @@
 package com.ajcoder.quietshield.dormant.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -19,6 +20,7 @@ class PolicyRepository(private val context: Context) {
     private object Keys {
         val theme = stringPreferencesKey("theme")
         val policies = stringPreferencesKey("policies_json")
+        val automaticClosing = booleanPreferencesKey("automatic_closing")
     }
 
     val theme: Flow<ThemeChoice> = context.settingsDataStore.data
@@ -33,8 +35,16 @@ class PolicyRepository(private val context: Context) {
         .catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }
         .map { preferences -> decodePolicies(preferences[Keys.policies].orEmpty()) }
 
+    val automaticClosing: Flow<Boolean> = context.settingsDataStore.data
+        .catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }
+        .map { preferences -> preferences[Keys.automaticClosing] ?: false }
+
     suspend fun setTheme(themeChoice: ThemeChoice) {
         context.settingsDataStore.edit { it[Keys.theme] = themeChoice.name }
+    }
+
+    suspend fun setAutomaticClosing(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.automaticClosing] = enabled }
     }
 
     suspend fun savePolicy(policy: AppPolicy) {
@@ -49,6 +59,19 @@ class PolicyRepository(private val context: Context) {
                 current[policy.packageName] = policy
             }
             preferences[Keys.policies] = encodePolicies(current)
+        }
+    }
+
+    suspend fun resetPolicies(packageNames: Set<String>) {
+        if (packageNames.isEmpty()) return
+        context.settingsDataStore.edit { preferences ->
+            val current = decodePolicies(preferences[Keys.policies].orEmpty()).toMutableMap()
+            packageNames.forEach(current::remove)
+            if (current.isEmpty()) {
+                preferences.remove(Keys.policies)
+            } else {
+                preferences[Keys.policies] = encodePolicies(current)
+            }
         }
     }
 
@@ -85,7 +108,7 @@ class PolicyRepository(private val context: Context) {
                             packageName = packageName,
                             sleepMode = enumOrDefault(
                                 item.optString("sleepMode"),
-                                SleepMode.STANDBY_THEN_FORCE_STOP,
+                                SleepMode.PROTECTED,
                             ),
                             backgroundTimeoutMinutes = item
                                 .optInt("backgroundTimeoutMinutes", 10)

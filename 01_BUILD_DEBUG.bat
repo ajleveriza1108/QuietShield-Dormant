@@ -16,10 +16,10 @@ call gradlew.bat --no-daemon clean test lint assembleDebug
 if errorlevel 1 goto failed
 if not exist "app\build\outputs\apk\debug\app-debug.apk" goto failed
 if not exist "release\debug" mkdir "release\debug"
-copy /y "app\build\outputs\apk\debug\app-debug.apk" "release\debug\QuietShield-Dormant-v0.1.0-alpha2-debug.apk" >nul
+copy /y "app\build\outputs\apk\debug\app-debug.apk" "release\debug\QuietShield-Dormant-v0.1.0-alpha3-debug.apk" >nul
 
 echo.
-echo [PASS] release\debug\QuietShield-Dormant-v0.1.0-alpha2-debug.apk
+echo [PASS] release\debug\QuietShield-Dormant-v0.1.0-alpha3-debug.apk
 pause
 exit /b 0
 

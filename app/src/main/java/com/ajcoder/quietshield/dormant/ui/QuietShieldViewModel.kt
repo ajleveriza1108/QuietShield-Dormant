@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.AppOpsManager
 import android.content.Context
 import android.os.Process
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ajcoder.quietshield.dormant.data.AppCatalogRepository
@@ -12,12 +13,24 @@ import com.ajcoder.quietshield.dormant.domain.AppPolicy
 import com.ajcoder.quietshield.dormant.domain.AppSection
 import com.ajcoder.quietshield.dormant.domain.InstalledApp
 import com.ajcoder.quietshield.dormant.domain.ThemeChoice
+import com.ajcoder.quietshield.dormant.engine.DormantEngineClient
+import com.ajcoder.quietshield.dormant.service.DormantMonitorService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+data class RuntimeState(
+    val setupReady: Boolean = false,
+    val runningPackages: Set<String> = emptySet(),
+    val showRunningOnly: Boolean = false,
+    val hasUsageAccess: Boolean = false,
+    val hasNotificationAccess: Boolean = false,
+)
 
 data class AppUiState(
     val apps: List<InstalledApp> = emptyList(),
@@ -26,37 +39,58 @@ data class AppUiState(
     val query: String = "",
     val loading: Boolean = true,
     val errorMessage: String? = null,
+    val automaticClosing: Boolean = false,
+    val setupReady: Boolean = false,
+    val runningPackages: Set<String> = emptySet(),
+    val showRunningOnly: Boolean = false,
     val hasUsageAccess: Boolean = false,
+    val hasNotificationAccess: Boolean = false,
 ) {
     val visibleApps: List<InstalledApp>
         get() = apps.filter { app ->
-            app.section == selectedSection && (
-                query.isBlank() ||
-                    app.label.contains(query, ignoreCase = true) ||
-                    app.packageName.contains(query, ignoreCase = true)
-                )
+            app.section == selectedSection &&
+                (!showRunningOnly || app.packageName in runningPackages) &&
+                (
+                    query.isBlank() ||
+                        app.label.contains(query, ignoreCase = true) ||
+                        app.packageName.contains(query, ignoreCase = true)
+                    )
         }
 
     fun policyFor(app: InstalledApp): AppPolicy {
         return policies[app.packageName] ?: AppPolicy.defaultFor(app)
     }
+
+    fun isRunning(app: InstalledApp): Boolean = app.packageName in runningPackages
 }
 
 class QuietShieldViewModel(application: Application) : AndroidViewModel(application) {
     private val catalogRepository = AppCatalogRepository(application)
     private val policyRepository = PolicyRepository(application)
+    private val engineClient = DormantEngineClient(application)
 
     private val apps = MutableStateFlow<List<InstalledApp>>(emptyList())
     private val selectedSection = MutableStateFlow(AppSection.USER)
     private val query = MutableStateFlow("")
     private val loading = MutableStateFlow(true)
     private val errorMessage = MutableStateFlow<String?>(null)
-    private val usageAccess = MutableStateFlow(hasUsageStatsAccess(application))
+    private val runtime = MutableStateFlow(
+        RuntimeState(
+            hasUsageAccess = hasUsageStatsAccess(application),
+            hasNotificationAccess = hasNotificationAccess(application),
+        ),
+    )
 
     val theme: StateFlow<ThemeChoice> = policyRepository.theme.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         ThemeChoice.AMOLED,
+    )
+
+    private val automaticClosing = policyRepository.automaticClosing.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        false,
     )
 
     private val baseUiState = combine(
@@ -75,15 +109,21 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
         )
     }
 
-    private val uiStateWithError = combine(baseUiState, errorMessage) { state, error ->
-        state.copy(errorMessage = error)
-    }
-
     val uiState: StateFlow<AppUiState> = combine(
-        uiStateWithError,
-        usageAccess,
-    ) { state, hasUsageAccess ->
-        state.copy(hasUsageAccess = hasUsageAccess)
+        baseUiState,
+        errorMessage,
+        automaticClosing,
+        runtime,
+    ) { state, error, enabled, runtimeState ->
+        state.copy(
+            errorMessage = error,
+            automaticClosing = enabled && runtimeState.setupReady,
+            setupReady = runtimeState.setupReady,
+            runningPackages = runtimeState.runningPackages,
+            showRunningOnly = runtimeState.showRunningOnly,
+            hasUsageAccess = runtimeState.hasUsageAccess,
+            hasNotificationAccess = runtimeState.hasNotificationAccess,
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -92,6 +132,7 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         refreshApps()
+        viewModelScope.launch { refreshRuntimeLoop() }
     }
 
     fun refreshApps() {
@@ -101,7 +142,7 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
             runCatching { catalogRepository.loadInstalledApps() }
                 .onSuccess { apps.value = it }
                 .onFailure { errorMessage.value = it.message ?: "Unable to load installed apps." }
-            usageAccess.value = hasUsageStatsAccess(getApplication())
+            refreshPermissionState()
             loading.value = false
         }
     }
@@ -112,6 +153,10 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setQuery(value: String) {
         query.value = value
+    }
+
+    fun clearQuery() {
+        query.value = ""
     }
 
     fun setTheme(themeChoice: ThemeChoice) {
@@ -129,8 +174,78 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch { policyRepository.savePolicies(policies) }
     }
 
+    fun resetSection(section: AppSection) {
+        val packageNames = apps.value
+            .filter { it.section == section }
+            .mapTo(mutableSetOf()) { it.packageName }
+        viewModelScope.launch { policyRepository.resetPolicies(packageNames) }
+    }
+
+    fun toggleRunningOnly() {
+        runtime.value = runtime.value.copy(showRunningOnly = !runtime.value.showRunningOnly)
+    }
+
     fun refreshPermissionState() {
-        usageAccess.value = hasUsageStatsAccess(getApplication())
+        val context = getApplication<Application>()
+        runtime.value = runtime.value.copy(
+            hasUsageAccess = hasUsageStatsAccess(context),
+            hasNotificationAccess = hasNotificationAccess(context),
+        )
+    }
+
+    fun setAutomaticClosing(enabled: Boolean) {
+        viewModelScope.launch {
+            errorMessage.value = null
+            if (enabled) {
+                if (!runtime.value.hasUsageAccess) {
+                    errorMessage.value = "Finish the app activity setup first."
+                    return@launch
+                }
+                if (!runtime.value.hasNotificationAccess) {
+                    errorMessage.value = "Finish the music and alert protection setup first."
+                    return@launch
+                }
+                if (!engineClient.ping()) {
+                    errorMessage.value = "Run Automatic Closing Setup on your computer, then try again."
+                    updateRuntimeSnapshot()
+                    return@launch
+                }
+                policyRepository.setAutomaticClosing(true)
+                DormantMonitorService.start(getApplication())
+            } else {
+                policyRepository.setAutomaticClosing(false)
+                DormantMonitorService.stop(getApplication())
+            }
+            updateRuntimeSnapshot()
+        }
+    }
+
+    fun activateAfterSetup() {
+        setAutomaticClosing(true)
+    }
+
+    private suspend fun refreshRuntimeLoop() {
+        while (viewModelScope.isActive) {
+            updateRuntimeSnapshot()
+            delay(5_000L)
+        }
+    }
+
+    private suspend fun updateRuntimeSnapshot() {
+        val context = getApplication<Application>()
+        val setupReady = engineClient.ping()
+        val runningPackages = if (setupReady) engineClient.runningPackages() else emptySet()
+        if (!setupReady && automaticClosing.value) {
+            policyRepository.setAutomaticClosing(false)
+            DormantMonitorService.stop(context)
+        }
+        runtime.value = runtime.value.copy(
+            setupReady = setupReady,
+            runningPackages = runningPackages,
+            hasUsageAccess = hasUsageStatsAccess(context),
+            hasNotificationAccess = hasNotificationAccess(context),
+        )
+        DormantQuickTileRequest.requestTileRefresh(context)
     }
 
     private fun hasUsageStatsAccess(context: Context): Boolean {
@@ -141,5 +256,10 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
             context.packageName,
         )
         return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun hasNotificationAccess(context: Context): Boolean {
+        return NotificationManagerCompat.getEnabledListenerPackages(context)
+            .contains(context.packageName)
     }
 }

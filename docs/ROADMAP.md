@@ -1,52 +1,35 @@
 # QuietShield Dormant Roadmap
 
-## v0.1.x — Foundation
+## v0.1.0-alpha3 — automatic-closing test
 
-- Installed-app inventory
-- User/System/Core classification
-- Search, themes, and persisted policies
-- Usage Access diagnostics
-- Classification tests and device-specific rule fixtures
+- App Info shortcut for every app
+- Dormant Quick Setting without counters
+- Running-app filter backed by the test helper
+- Search clear button
+- USB-activated automatic standby and closing for explicitly configured apps
+- Foreground monitoring with a small status notification
+- Usage and music/alert protection setup
+- Core-app protection before the monitoring loop starts
 
-## v0.2.x — Monitoring
+## Next safety work
 
-- Foreground/background transition history using UsageStats
-- Inactivity timeline and action queue
-- Notification-rate observations after explicit Notification Access
-- Media-session protection
-- Local activity history with retention controls
-- Auto Aggressive recommendations only, never automatic assignment
+- Action history with reasons and timestamps
+- Per-action confirmation mode for System Apps
+- Media-player compatibility testing
+- Samsung, Pixel, Xiaomi, Oppo, Vivo, Realme, and Motorola test matrix
+- Reboot and helper-disconnection recovery
+- Measured RAM and battery profiling
+- Signed optimized release size report
+- Banking-Safe workflow refinement
 
-## v0.3.x — Privileged-engine prototype
+## Later milestones
 
-- Separate shell/ADB engine process
-- Health handshake and genuine online/offline status
-- Standby, force-stop, enable, and disable adapters
-- Command allowlist and immutable Core App blocklist
-- Dry-run mode
-- Rollback records
-- USB activation utility for Windows
+- Automatic aggressive recommendations based on measured behavior
+- Optional disable/enable workflow with rollback records
+- Import/export of app behavior
+- Final licensing and updater integration after the engine is stable
 
-## v0.4.x — Safety validation
+## Alpha 3 R2
 
-- Samsung, Pixel, Xiaomi, Oppo, Vivo, Realme, and Motorola device matrices
-- Playing-media, active-call, navigation, VPN, keyboard, launcher, and alarm safeguards
-- Banking-Safe Mode
-- Emergency Restore All Apps
-- Reboot and engine-loss recovery
-
-## v0.5.x — Beta
-
-- Auto Aggressive suggestions based on measured behavior
-- Battery baseline and managed-period comparison
-- Import/export of policy configuration
-- Accessibility and localization review
-- Privacy policy and Play package-visibility declaration preparation
-
-## Explicitly deferred
-
-- Fully automatic aggressive assignment
-- Automatic system-app disabling
-- Root mode
-- Device-owner provisioning
-- Claims of exact battery savings without measured evidence
+- Real installed app icons in all three tabs
+- Per-tab reset with confirmation and isolated behavior reset
