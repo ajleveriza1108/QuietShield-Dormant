@@ -2,7 +2,7 @@
 
 QuietShield Dormant is a local Android background-app manager with user-selected sleep and close rules, Wireless Debugging activation, media protection, safety classification, and measured beta results.
 
-## Current milestone: v0.2.0 Beta 1 R4
+## Current milestone: v0.2.0 Beta 1 R6
 
 This beta combines the planned Alpha 4, Alpha 5, Alpha 6, and Beta 1 milestones into one test build:
 
@@ -24,13 +24,15 @@ This beta combines the planned Alpha 4, Alpha 5, Alpha 6, and Beta 1 milestones 
 - Optimized beta APK with R8 and resource shrinking
 
 
-### R4 helper-launch repair
+## Beta 1 R6 direct-wireless repair
 
-R4 fixes the stage after Android accepts Wireless Debugging pairing. It removes the self-matching `pkill -f` launcher, restarts only the PID previously written by Dormant, copies the helper APK to `/data/local/tmp`, avoids treating LibADB's normal no-output stream close as a command failure, waits for the helper response before disconnecting, and reports a specific helper diagnostic code when startup still fails.
+R6 also fixes both `autoConnect` timeout constants to `Long` (`8_000L`), matching libadb 3.1.1 and preventing the Kotlin `Int` versus `Long` compilation failure.
+
+R5 removes the wireless `app_process` helper that timed out after Android had already accepted pairing. Wireless activation now verifies and retains the encrypted ADB connection itself. Each scheduled action uses a short authenticated shell stream, and Dormant reconnects once if Android rotates the connection. The old localhost helper remains only for the optional USB fallback.
 
 ## Important beta limitation
 
-Automatic closing still requires Android's Wireless Debugging authority. The helper stops when the phone fully restarts and Dormant must restore it. The beta attempts restoration when Android allows it, but the user may still need to turn Wireless Debugging on and tap Restore.
+Automatic closing still requires Android's Wireless Debugging authority. After a full phone restart, Android may require the user to turn Wireless Debugging on and tap Restore. Pairing is normally retained, so a new six-digit code should not be required unless Android forgets the pairing or Dormant's data is cleared.
 
 Do not use the first automatic-closing tests on banking apps, authenticators, alarms, the launcher, keyboard, phone, messages, VPN, accessibility services, or health/safety apps.
 
@@ -45,7 +47,7 @@ Run:
 The optimized beta APK is copied to:
 
 ```text
-release\beta\QuietShield-Dormant-v0.2.0-beta1-r4.apk
+release\beta\QuietShield-Dormant-v0.2.0-beta1-r6.apk
 ```
 
 Install it through:

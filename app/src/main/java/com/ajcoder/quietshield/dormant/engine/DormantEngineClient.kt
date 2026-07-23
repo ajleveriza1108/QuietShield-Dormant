@@ -17,39 +17,59 @@ data class EngineRuntimeSnapshot(
     val disabledPackages: Set<String> = emptySet(),
 )
 
+/**
+ * Main automatic-closing command client.
+ *
+ * Wireless setup now uses DirectAdbShellEngine and does not need a detached
+ * app_process helper. The authenticated localhost helper protocol is retained
+ * only as a compatibility fallback for the optional USB activation script.
+ */
 class DormantEngineClient(private val context: Context) {
+    private val directEngine = DirectAdbShellEngine(context.applicationContext)
+
     companion object {
         const val PORT = 47531
         private const val TOKEN_FILE = "engine_token"
     }
 
     suspend fun ping(): Boolean = withContext(Dispatchers.IO) {
-        singleResponse("PING").startsWith("OK")
+        directEngine.ping() || localSingleResponse("PING").startsWith("OK")
     }
 
     suspend fun forceStop(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        singleResponse("FORCE_STOP $packageName").startsWith("OK")
+        directEngine.forceStop(packageName) ||
+            localSingleResponse("FORCE_STOP $packageName").startsWith("OK")
     }
 
     suspend fun placeInStandby(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        singleResponse("STANDBY $packageName").startsWith("OK")
+        directEngine.placeInStandby(packageName) ||
+            localSingleResponse("STANDBY $packageName").startsWith("OK")
     }
 
     suspend fun markActive(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        singleResponse("WAKE $packageName").startsWith("OK")
+        directEngine.markActive(packageName) ||
+            localSingleResponse("WAKE $packageName").startsWith("OK")
     }
 
     suspend fun disableApp(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        singleResponse("DISABLE $packageName").startsWith("OK")
+        directEngine.disableApp(packageName) ||
+            localSingleResponse("DISABLE $packageName").startsWith("OK")
     }
 
     suspend fun enableApp(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        singleResponse("ENABLE $packageName").startsWith("OK")
+        directEngine.enableApp(packageName) ||
+            localSingleResponse("ENABLE $packageName").startsWith("OK")
     }
 
     suspend fun runtimeSnapshot(): EngineRuntimeSnapshot = withContext(Dispatchers.IO) {
-        val lines = multiResponse("RUNTIME")
-        if (lines.isEmpty()) return@withContext EngineRuntimeSnapshot()
+        directEngine.runtimeSnapshot() ?: localRuntimeSnapshot()
+    }
+
+    suspend fun runningPackages(): Set<String> = runtimeSnapshot().runningPackages
+
+    private fun localRuntimeSnapshot(): EngineRuntimeSnapshot {
+        val lines = localMultiResponse("RUNTIME")
+        if (lines.isEmpty()) return EngineRuntimeSnapshot()
         val running = mutableSetOf<String>()
         val services = mutableSetOf<String>()
         val media = mutableSetOf<String>()
@@ -65,12 +85,10 @@ class DormantEngineClient(private val context: Context) {
                 "DISABLED" -> disabled += packageName
             }
         }
-        EngineRuntimeSnapshot(running, services, media, disabled)
+        return EngineRuntimeSnapshot(running, services, media, disabled)
     }
 
-    suspend fun runningPackages(): Set<String> = runtimeSnapshot().runningPackages
-
-    private fun multiResponse(command: String): List<String> {
+    private fun localMultiResponse(command: String): List<String> {
         val token = readToken() ?: return emptyList()
         return runCatching {
             Socket().use { socket ->
@@ -92,7 +110,7 @@ class DormantEngineClient(private val context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    private fun singleResponse(command: String): String {
+    private fun localSingleResponse(command: String): String {
         val token = readToken() ?: return "ERROR Setup needed"
         return runCatching {
             Socket().use { socket ->

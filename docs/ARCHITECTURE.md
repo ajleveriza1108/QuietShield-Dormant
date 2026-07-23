@@ -1,6 +1,6 @@
 # Architecture
 
-QuietShield Dormant separates the visible app from privileged actions.
+QuietShield Dormant separates its visible app, safety policy, monitoring, and privileged command transport.
 
 ## App layer
 
@@ -8,11 +8,19 @@ The Kotlin/Compose app loads installed applications, classifies them into User, 
 
 ## Wireless setup layer
 
-The app generates a private local pairing identity and uses Android's Wireless Debugging pairing flow. After pairing, it connects to the phone's wireless ADB service, starts the small Dormant shell helper, verifies the response, and disconnects the setup session.
+The app creates a private local pairing identity and uses Android's Wireless Debugging pairing flow. A short-lived foreground service discovers `_adb-tls-pairing._tcp.` while Android's pairing-code screen is open. The address and changing port remain internal; the user enters only the six-digit code through the notification.
 
-## Privileged helper
+After pairing, Dormant discovers the normal secure ADB connection and verifies it with a harmless shell command. Pairing success and command-connection success are reported separately.
 
-The helper listens only on the phone's loopback address and requires a randomly generated private setup token. It performs validated standby, close, enable, disable, and runtime-inspection requests. Static core-package rules are enforced again inside the helper.
+## Direct wireless engine
+
+Wireless mode does not launch a detached `app_process` server. The Dormant foreground monitor retains the authenticated ADB manager and opens a short shell stream only when it needs to inspect runtime state or apply a saved action. A failed stream triggers one controlled reconnect. This removes the helper-start timeout seen after successful Samsung pairing.
+
+Every package-changing command is validated in the app before it is sent. Dormant rejects malformed package names, its own package, and known Core Apps.
+
+## USB compatibility fallback
+
+The optional computer activation script can still start the older token-protected localhost helper. `DormantEngineClient` uses the direct wireless engine first and falls back to the local helper only when it is actually available.
 
 ## Monitoring
 
@@ -24,13 +32,4 @@ Local beta metrics record capped action history, restart signals, background-ser
 
 ## Recovery
 
-A small recovery service attempts to restore a saved pairing after restart or app update. Android may still require the user to turn Wireless Debugging on and tap Restore. Dormant never reports automatic closing as active unless the helper responds.
-## Automatic wireless pairing discovery
-
-A short-lived foreground service uses Android network service discovery to watch for the temporary `_adb-tls-pairing._tcp.` service while the system pairing-code screen is open. The changing address and port stay internal. A direct-reply notification accepts only the six-digit code, pairs the private Dormant identity, discovers the normal secure connection, starts the helper, and then stops the pairing service.
-
-
-
-## Helper launch reliability
-
-The wireless connection starts the helper from a copy of the installed APK stored under `/data/local/tmp`. Dormant records the helper PID and only stops that verified previous PID during restoration; it does not use a broad `pkill -f` pattern. The ADB shell command is considered dispatched when the one-shot shell closes, even when it produces no output, and Dormant confirms success only after the loopback helper answers an authenticated ping.
+A recovery service attempts to reconnect with the saved pairing after restart or app update. Android may still require the user to turn Wireless Debugging on and tap Restore. Dormant never reports automatic closing as active unless a direct shell verification or the optional USB helper responds.

@@ -261,7 +261,7 @@ class BetaMetricsRepository(context: Context) {
             appendLine("Generated: ${formatTime(System.currentTimeMillis())}")
             appendLine("Version: $appVersion")
             appendLine("Device: $deviceSummary")
-            appendLine("Automatic closing helper: ${if (helperReady) "Ready" else "Not ready"}")
+            appendLine("Automatic closing connection: ${if (helperReady) "Ready" else "Not ready"}")
             appendLine("App activity access: ${if (usageReady) "Ready" else "Not ready"}")
             appendLine("Managed app rules: $policyCount")
             appendLine("Close-sooner suggestions: $suggestionCount")

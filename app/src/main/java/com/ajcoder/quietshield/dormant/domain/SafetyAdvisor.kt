@@ -12,7 +12,7 @@ import android.view.accessibility.AccessibilityManager
 
 /**
  * Builds a conservative safety snapshot. Hard-protected packages are never sent
- * to the privileged helper. Recommended packages remain user-controlled but
+ * to the privileged command engine. Recommended packages remain user-controlled but
  * begin with a clear warning and a Leave this app alone default.
  */
 class SafetyAdvisor(private val application: Application) {

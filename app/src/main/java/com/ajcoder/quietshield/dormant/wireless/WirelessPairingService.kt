@@ -162,9 +162,13 @@ class WirelessPairingService : Service(), WirelessPairingDiscovery.Callback {
                 WirelessActivationResult.Success -> completeSetup()
                 is WirelessActivationResult.Failure -> {
                     updatePairingNotification(
-                        title = "Pairing did not finish",
+                        title = if (result.pairingAccepted) {
+                            "Pairing saved; setup needs attention"
+                        } else {
+                            "Pairing did not finish"
+                        },
                         text = result.message,
-                        allowReply = endpoint?.isFresh(120_000L) == true,
+                        allowReply = !result.pairingAccepted && endpoint?.isFresh(120_000L) == true,
                     )
                 }
             }

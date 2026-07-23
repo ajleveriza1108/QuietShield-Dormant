@@ -11,8 +11,8 @@ android {
         applicationId = "com.ajcoder.quietshield.dormant"
         minSdk = 29
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.2.0-beta1-r4"
+        versionCode = 15
+        versionName = "0.2.0-beta1-r6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

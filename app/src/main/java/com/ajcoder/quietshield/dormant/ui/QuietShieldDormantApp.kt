@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -554,13 +555,17 @@ private fun AppHeader(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onRefresh) { Text("Reload") }
-                TextButton(onClick = onAddQuickSetting) { Text("Quick Setting") }
-                TextButton(onClick = onShowResults) { Text("Results") }
-                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onRefresh) { Text("Reload", maxLines = 1) }
+                TextButton(onClick = onAddQuickSetting) { Text("Quick Setting", maxLines = 1) }
+                TextButton(onClick = onShowResults) { Text("Results", maxLines = 1) }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
                 ThemeMenu(themeChoice, onThemeSelected)
             }
         }
@@ -574,8 +579,16 @@ private fun ThemeMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        OutlinedButton(onClick = { expanded = true }) {
-            Text(selected.label)
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.widthIn(min = 152.dp),
+        ) {
+            Text(
+                text = "Theme: ${selected.label}",
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         DropdownMenu(
             expanded = expanded,

@@ -136,7 +136,7 @@ class DormantMonitorService : Service() {
                 lastEngineCheck = now
                 if (!engineClient.ping()) {
                     policyRepository.setRuntimeAutomaticClosing(false)
-                    metricsRepository.recordHelper(false, "Automatic closing stopped because its helper did not respond.", now)
+                    metricsRepository.recordHelper(false, "Automatic closing stopped because the Wireless Debugging connection did not respond.", now)
                     stopSelf()
                     break
                 }

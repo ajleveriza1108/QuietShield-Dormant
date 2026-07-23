@@ -1,4 +1,4 @@
-# QuietShield Dormant v0.2.0 Beta 1 R4 test plan
+# QuietShield Dormant v0.2.0 Beta 1 R6 test plan
 
 Use a secondary or carefully backed-up phone first. Begin with harmless shopping apps or games.
 
@@ -17,7 +17,7 @@ Use a secondary or carefully backed-up phone first. Begin with harmless shopping
 - Keep the pairing-code screen open. Dormant should find the changing port automatically.
 - Enter only the six-digit code in the Dormant notification and tap Pair.
 - Confirm Automatic closing is on.
-- Turn the screen off for five minutes, return, and confirm the helper is still ready.
+- Turn the screen off for five minutes, return, and confirm automatic closing is still ready.
 
 ## 3. Automatic closing
 
@@ -69,7 +69,7 @@ Do not test banking, authenticator, health, emergency, alarm, VPN, or password-m
 - Confirm rules remain saved.
 - Turn Wireless Debugging on if needed.
 - Confirm automatic restore or tap Restore automatic closing.
-- Confirm Dormant never shows On while the helper is unavailable.
+- Confirm Dormant never shows On while the wireless connection is unavailable.
 
 ## 8. Battery comparison
 
