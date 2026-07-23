@@ -8,11 +8,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -40,6 +44,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +64,8 @@ import com.ajcoder.quietshield.dormant.domain.InstalledApp
 import com.ajcoder.quietshield.dormant.domain.SleepMode
 import com.ajcoder.quietshield.dormant.domain.SyncMode
 import com.ajcoder.quietshield.dormant.domain.ThemeChoice
+import com.ajcoder.quietshield.dormant.domain.formatMinutes
+import com.ajcoder.quietshield.dormant.domain.policySummary
 import com.ajcoder.quietshield.dormant.ui.theme.QuietShieldDormantTheme
 
 private val timeoutPresets = listOf(1, 2, 5, 10, 15, 30, 60)
@@ -69,6 +76,19 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
     val themeChoice by viewModel.theme.collectAsState()
     val state by viewModel.uiState.collectAsState()
     var selectedApp by remember { mutableStateOf<InstalledApp?>(null) }
+    var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showGroupEditor by remember { mutableStateOf(false) }
+
+    val selectableApps = state.visibleApps.filter { it.section != AppSection.CORE }
+    val selectedApps = state.apps.filter { it.packageName in selectedPackages }
+
+    LaunchedEffect(state.selectedSection, state.query, state.apps) {
+        val allowedPackages = state.visibleApps
+            .filter { it.section != AppSection.CORE }
+            .mapTo(mutableSetOf()) { it.packageName }
+        selectedPackages = selectedPackages.intersect(allowedPackages)
+        if (selectedPackages.isEmpty()) showGroupEditor = false
+    }
 
     QuietShieldDormantTheme(choice = themeChoice) {
         Scaffold(
@@ -85,9 +105,8 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                     .fillMaxSize()
                     .padding(innerPadding),
             ) {
-                CapabilityBanner()
                 if (!state.hasUsageAccess) {
-                    UsageAccessBanner(onPermissionReturned = viewModel::refreshPermissionState)
+                    SimpleSetupBanner(onPermissionReturned = viewModel::refreshPermissionState)
                 }
 
                 OutlinedTextField(
@@ -96,7 +115,7 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    label = { Text("Search apps or package names") },
+                    label = { Text("Search apps") },
                     singleLine = true,
                 )
 
@@ -106,10 +125,25 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                         val count = state.apps.count { it.section == section }
                         Tab(
                             selected = state.selectedSection == section,
-                            onClick = { viewModel.selectSection(section) },
+                            onClick = {
+                                selectedPackages = emptySet()
+                                viewModel.selectSection(section)
+                            },
                             text = { Text("${section.title}\n$count") },
                         )
                     }
+                }
+
+                if (state.selectedSection != AppSection.CORE && !state.loading) {
+                    SelectionBar(
+                        apps = selectableApps,
+                        selectedPackages = selectedPackages,
+                        onSelectAll = {
+                            selectedPackages = selectableApps.mapTo(mutableSetOf()) { it.packageName }
+                        },
+                        onClear = { selectedPackages = emptySet() },
+                        onSetBehavior = { showGroupEditor = true },
+                    )
                 }
 
                 when {
@@ -118,8 +152,14 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                         message = state.errorMessage,
                         onRetry = viewModel::refreshApps,
                     )
-                    state.visibleApps.isEmpty() -> EmptyState(state.selectedSection)
-                    else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    state.visibleApps.isEmpty() -> EmptyState()
+                    else -> LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .navigationBarsPadding(),
+                        contentPadding = PaddingValues(bottom = 12.dp),
+                    ) {
                         items(
                             items = state.visibleApps,
                             key = { it.packageName },
@@ -127,6 +167,18 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                             AppRow(
                                 app = app,
                                 policy = state.policyFor(app),
+                                selected = app.packageName in selectedPackages,
+                                onSelectionChange = if (app.section == AppSection.CORE) {
+                                    null
+                                } else {
+                                    { checked ->
+                                        selectedPackages = if (checked) {
+                                            selectedPackages + app.packageName
+                                        } else {
+                                            selectedPackages - app.packageName
+                                        }
+                                    }
+                                },
                                 onClick = { selectedApp = app },
                             )
                             HorizontalDivider()
@@ -149,6 +201,20 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                 )
             }
         }
+
+        if (showGroupEditor && selectedApps.isNotEmpty()) {
+            ModalBottomSheet(onDismissRequest = { showGroupEditor = false }) {
+                GroupPolicyEditor(
+                    apps = selectedApps,
+                    onApply = { template ->
+                        viewModel.savePolicies(selectedApps, template)
+                        showGroupEditor = false
+                        selectedPackages = emptySet()
+                    },
+                    onClose = { showGroupEditor = false },
+                )
+            }
+        }
     }
 }
 
@@ -162,7 +228,7 @@ private fun AppHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -172,12 +238,12 @@ private fun AppHeader(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "v0.1.0-alpha1 · Foundation",
+                    text = "Test build · Automatic closing is not active yet",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = onRefresh) { Text("Refresh") }
+            TextButton(onClick = onRefresh) { Text("Reload") }
             ThemeMenu(themeChoice, onThemeSelected)
         }
     }
@@ -211,56 +277,77 @@ private fun ThemeMenu(
 }
 
 @Composable
-private fun CapabilityBanner() {
+private fun SimpleSetupBanner(onPermissionReturned: () -> Unit) {
+    val context = LocalContext.current
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(16.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = "Foundation mode",
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+                text = "Allow QuietShield Dormant to see when apps were last used.",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Installed-app inventory, safety classification, themes, search, and per-app policy storage are active. Automatic standby, force-stop, and disable controls are intentionally not enabled until the privileged engine is implemented and verified.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            TextButton(
+                onClick = {
+                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                    context.startActivity(intent)
+                },
+            ) { Text("Set up") }
+            TextButton(onClick = onPermissionReturned) { Text("Check") }
         }
     }
 }
 
 @Composable
-private fun UsageAccessBanner(onPermissionReturned: () -> Unit) {
-    val context = LocalContext.current
+private fun SelectionBar(
+    apps: List<InstalledApp>,
+    selectedPackages: Set<String>,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    onSetBehavior: () -> Unit,
+) {
+    val allSelected = apps.isNotEmpty() && apps.all { it.packageName in selectedPackages }
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Usage Access is not granted", fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = allSelected,
+                onCheckedChange = { checked -> if (checked) onSelectAll() else onClear() },
+                enabled = apps.isNotEmpty(),
+            )
+            TextButton(
+                onClick = { if (allSelected) onClear() else onSelectAll() },
+                enabled = apps.isNotEmpty(),
+            ) {
+                Text(if (allSelected) "Clear all" else "Select all")
+            }
+            Spacer(Modifier.weight(1f))
             Text(
-                "Grant Usage Access so later builds can determine when managed apps leave the foreground. This permission does not force-stop apps.",
+                text = "${selectedPackages.size} selected",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = {
-                        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                            data = Uri.parse("package:${context.packageName}")
-                        }
-                        context.startActivity(intent)
-                    },
-                ) { Text("Open Settings") }
-                TextButton(onClick = onPermissionReturned) { Text("Check Again") }
-            }
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = onSetBehavior,
+                enabled = selectedPackages.isNotEmpty(),
+            ) { Text("Set behavior") }
         }
     }
 }
@@ -269,15 +356,24 @@ private fun UsageAccessBanner(onPermissionReturned: () -> Unit) {
 private fun AppRow(
     app: InstalledApp,
     policy: AppPolicy,
+    selected: Boolean,
+    onSelectionChange: ((Boolean) -> Unit)?,
     onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 13.dp),
+            .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onSelectionChange != null) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = onSelectionChange,
+            )
+            Spacer(Modifier.width(4.dp))
+        }
         Box(
             modifier = Modifier
                 .size(44.dp)
@@ -303,9 +399,9 @@ private fun AppRow(
                 )
                 Text(
                     text = when (app.section) {
-                        AppSection.CORE -> "LOCKED"
-                        AppSection.SYSTEM -> "CAUTION"
-                        AppSection.USER -> if (policy.aggressive) "AGGRESSIVE" else "USER"
+                        AppSection.CORE -> "Protected"
+                        AppSection.SYSTEM -> "Built-in"
+                        AppSection.USER -> if (policy.aggressive) "Close sooner" else "Installed"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = if (app.section == AppSection.CORE) {
@@ -316,26 +412,11 @@ private fun AppRow(
                 )
             }
             Text(
-                text = app.packageName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (app.section == AppSection.CORE) {
-                    "Always protected"
-                } else {
-                    buildString {
-                        append(policy.sleepMode.label)
-                        if (policy.sleepMode != SleepMode.PROTECTED) {
-                            append(" · ${policy.backgroundTimeoutMinutes} min")
-                        }
-                        append(" · ${policy.syncMode.label}")
-                    }
-                },
+                text = if (app.section == AppSection.CORE) "Always left alone" else policySummary(policy),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -347,7 +428,7 @@ private fun LoadingState() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
             Spacer(Modifier.height(12.dp))
-            Text("Classifying installed apps safely…")
+            Text("Loading apps…")
         }
     }
 }
@@ -359,17 +440,17 @@ private fun ErrorState(message: String?, onRetry: () -> Unit) {
             modifier = Modifier.padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(message ?: "Unable to load apps.")
+            Text(message ?: "The app list could not be loaded.")
             Spacer(Modifier.height(12.dp))
-            Button(onClick = onRetry) { Text("Retry") }
+            Button(onClick = onRetry) { Text("Try again") }
         }
     }
 }
 
 @Composable
-private fun EmptyState(section: AppSection) {
+private fun EmptyState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("No ${section.title.lowercase()} match the current search.")
+        Text("No apps found.")
     }
 }
 
@@ -382,132 +463,256 @@ private fun PolicyEditor(
 ) {
     var draft by remember(app.packageName, initialPolicy) { mutableStateOf(initialPolicy) }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 28.dp),
+            .navigationBarsPadding()
+            .imePadding(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp),
     ) {
-        Text(app.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            app.packageName,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(app.classificationReason, style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(16.dp))
-
-        if (app.section == AppSection.CORE) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            ) {
-                Text(
-                    text = "Core apps are visible for transparency but remain permanently protected. Sleep, force-stop, aggressive, sync-blocking, and disable controls are unavailable.",
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
+        item {
+            Text(app.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(app.classificationReason, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
-            Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close") }
-        } else {
-            if (app.section == AppSection.SYSTEM) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.errorContainer,
-            ) {
-                Text(
-                    text = "System app: policy changes require caution. Automatic aggressive classification and automatic disabling will remain unavailable for system apps.",
-                    modifier = Modifier.padding(14.dp),
-                )
-            }
-            Spacer(Modifier.height(12.dp))
         }
 
-        SectionTitle("Sleep Mode")
-        SleepMode.entries.forEach { mode ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { draft = draft.copy(sleepMode = mode) }
-                    .padding(vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
+        if (app.section == AppSection.CORE) {
+            item {
+                InfoCard(
+                    text = "Your phone needs this app. QuietShield Dormant will always leave it alone.",
+                    warning = false,
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+            }
+        } else {
+            if (app.section == AppSection.SYSTEM) {
+                item {
+                    InfoCard(
+                        text = "This app came with your phone. Changing it may stop a phone feature. QuietShield Dormant will never change it on its own.",
+                        warning = true,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
+
+            item {
+                SectionTitle("How should this app behave?")
+                Spacer(Modifier.height(4.dp))
+            }
+            items(SleepMode.entries) { mode ->
+                ChoiceRow(
+                    title = mode.label,
+                    description = mode.description,
                     selected = draft.sleepMode == mode,
                     onClick = { draft = draft.copy(sleepMode = mode) },
                 )
-                Column {
-                    Text(mode.label, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        mode.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            }
+
+            if (draft.sleepMode != SleepMode.PROTECTED) {
+                item {
+                    Spacer(Modifier.height(12.dp))
+                    TimeoutSelector(
+                        title = "After leaving the app",
+                        helper = "Choose how long QuietShield Dormant waits before the first action.",
+                        value = draft.backgroundTimeoutMinutes,
+                        onChange = { draft = draft.copy(backgroundTimeoutMinutes = it) },
                     )
                 }
             }
+
+            if (draft.sleepMode == SleepMode.STANDBY_THEN_FORCE_STOP) {
+                item {
+                    Spacer(Modifier.height(14.dp))
+                    TimeoutSelector(
+                        title = "After the app goes to sleep",
+                        helper = "Choose how long QuietShield Dormant waits before closing the app.",
+                        value = draft.inactiveTimeoutMinutes,
+                        onChange = { draft = draft.copy(inactiveTimeoutMinutes = it) },
+                    )
+                }
+            }
+
+            item {
+                Spacer(Modifier.height(18.dp))
+                SectionTitle("Activity in the background")
+                Spacer(Modifier.height(4.dp))
+            }
+            items(SyncMode.entries) { mode ->
+                ChoiceRow(
+                    title = mode.label,
+                    description = mode.description,
+                    selected = draft.syncMode == mode,
+                    onClick = { draft = draft.copy(syncMode = mode) },
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(10.dp))
+                SettingSwitch(
+                    title = "Keep playing apps active",
+                    subtitle = "Do not sleep or close this app while music, video, or other media is playing.",
+                    checked = draft.mediaProtection,
+                    onCheckedChange = { draft = draft.copy(mediaProtection = it) },
+                )
+                SettingSwitch(
+                    title = "Close this app sooner",
+                    subtitle = "Use stronger handling when this app keeps running or sends too many alerts.",
+                    checked = draft.aggressive,
+                    onCheckedChange = { draft = draft.copy(aggressive = it) },
+                )
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = { onSave(draft) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Save changes") }
+                TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupPolicyEditor(
+    apps: List<InstalledApp>,
+    onApply: (AppPolicy) -> Unit,
+    onClose: () -> Unit,
+) {
+    val firstApp = apps.first()
+    var draft by remember(apps.map { it.packageName }) {
+        mutableStateOf(AppPolicy.defaultFor(firstApp).copy(packageName = ""))
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp),
+    ) {
+        item {
+            Text(
+                text = "Set behavior for ${apps.size} apps",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "These choices will be applied to every selected app.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(14.dp))
+            if (firstApp.section == AppSection.SYSTEM) {
+                InfoCard(
+                    text = "These apps came with your phone. Review your choices carefully before applying them.",
+                    warning = true,
+                )
+                Spacer(Modifier.height(14.dp))
+            }
+            SectionTitle("How should these apps behave?")
+        }
+
+        items(SleepMode.entries) { mode ->
+            ChoiceRow(
+                title = mode.label,
+                description = mode.description,
+                selected = draft.sleepMode == mode,
+                onClick = { draft = draft.copy(sleepMode = mode) },
+            )
         }
 
         if (draft.sleepMode != SleepMode.PROTECTED) {
-            Spacer(Modifier.height(12.dp))
-            TimeoutSelector(
-                title = "Background Timeout",
-                value = draft.backgroundTimeoutMinutes,
-                onChange = { draft = draft.copy(backgroundTimeoutMinutes = it) },
-            )
-        }
-
-        if (draft.sleepMode == SleepMode.STANDBY_THEN_FORCE_STOP) {
-            Spacer(Modifier.height(12.dp))
-            TimeoutSelector(
-                title = "Inactive Timeout",
-                value = draft.inactiveTimeoutMinutes,
-                onChange = { draft = draft.copy(inactiveTimeoutMinutes = it) },
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("Background Sync")
-        SyncMode.entries.forEach { syncMode ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { draft = draft.copy(syncMode = syncMode) }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
-                    selected = draft.syncMode == syncMode,
-                    onClick = { draft = draft.copy(syncMode = syncMode) },
+            item {
+                Spacer(Modifier.height(12.dp))
+                TimeoutSelector(
+                    title = "After leaving an app",
+                    helper = "Choose how long QuietShield Dormant waits before the first action.",
+                    value = draft.backgroundTimeoutMinutes,
+                    onChange = { draft = draft.copy(backgroundTimeoutMinutes = it) },
                 )
-                Text(syncMode.label)
             }
         }
 
-        SettingSwitch(
-            title = "Media Protection",
-            subtitle = "Pause sleep and force-stop timers while active playback is detected.",
-            checked = draft.mediaProtection,
-            onCheckedChange = { draft = draft.copy(mediaProtection = it) },
-        )
+        if (draft.sleepMode == SleepMode.STANDBY_THEN_FORCE_STOP) {
+            item {
+                Spacer(Modifier.height(14.dp))
+                TimeoutSelector(
+                    title = "After an app goes to sleep",
+                    helper = "Choose how long QuietShield Dormant waits before closing it.",
+                    value = draft.inactiveTimeoutMinutes,
+                    onChange = { draft = draft.copy(inactiveTimeoutMinutes = it) },
+                )
+            }
+        }
 
-        SettingSwitch(
-            title = "Manual Aggressive",
-            subtitle = if (app.section == AppSection.SYSTEM) {
-                "System apps may be marked manually, but automatic aggressive assignment stays disabled."
-            } else {
-                "Marks this app for stronger handling once the privileged engine is added."
-            },
-            checked = draft.aggressive,
-            onCheckedChange = { draft = draft.copy(aggressive = it) },
-        )
+        item {
+            Spacer(Modifier.height(18.dp))
+            SectionTitle("Activity in the background")
+        }
+        items(SyncMode.entries) { mode ->
+            ChoiceRow(
+                title = mode.label,
+                description = mode.description,
+                selected = draft.syncMode == mode,
+                onClick = { draft = draft.copy(syncMode = mode) },
+            )
+        }
 
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = { onSave(draft) },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Save Policy") }
-        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+        item {
+            Spacer(Modifier.height(10.dp))
+            SettingSwitch(
+                title = "Keep playing apps active",
+                subtitle = "Do not sleep or close selected apps while media is playing.",
+                checked = draft.mediaProtection,
+                onCheckedChange = { draft = draft.copy(mediaProtection = it) },
+            )
+            SettingSwitch(
+                title = "Close these apps sooner",
+                subtitle = "Use stronger handling when selected apps keep running or send too many alerts.",
+                checked = draft.aggressive,
+                onCheckedChange = { draft = draft.copy(aggressive = it) },
+            )
+            Spacer(Modifier.height(18.dp))
+            Button(onClick = { onApply(draft) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Apply to ${apps.size} apps")
+            }
+            TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(text: String, warning: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (warning) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Text(text = text, modifier = Modifier.padding(14.dp))
+    }
+}
+
+@Composable
+private fun ChoiceRow(
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -525,6 +730,7 @@ private fun SectionTitle(text: String) {
 @Composable
 private fun TimeoutSelector(
     title: String,
+    helper: String,
     value: Int,
     onChange: (Int) -> Unit,
 ) {
@@ -535,13 +741,13 @@ private fun TimeoutSelector(
     Column {
         Text(title, fontWeight = FontWeight.SemiBold)
         Text(
-            "1, 2, 5, 10, 15, 30, 60 minutes, or a custom value.",
+            helper,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Box {
             OutlinedButton(onClick = { expanded = true }) {
-                Text(if (value in timeoutPresets) "$value minutes" else "Custom: $value minutes")
+                Text(if (value in timeoutPresets) formatMinutes(value) else "Custom: ${formatMinutes(value)}")
             }
             DropdownMenu(
                 expanded = expanded,
@@ -549,7 +755,7 @@ private fun TimeoutSelector(
             ) {
                 timeoutPresets.forEach { minutes ->
                     DropdownMenuItem(
-                        text = { Text("$minutes minutes") },
+                        text = { Text(formatMinutes(minutes)) },
                         onClick = {
                             expanded = false
                             customEditor = false
@@ -558,7 +764,7 @@ private fun TimeoutSelector(
                     )
                 }
                 DropdownMenuItem(
-                    text = { Text("Custom") },
+                    text = { Text("Custom time") },
                     onClick = {
                         expanded = false
                         customEditor = true
@@ -573,7 +779,8 @@ private fun TimeoutSelector(
                     customText = text.filter(Char::isDigit).take(5)
                     customText.toIntOrNull()?.coerceIn(1, 10_080)?.let(onChange)
                 },
-                label = { Text("Custom minutes (1–10080)") },
+                label = { Text("Number of minutes") },
+                supportingText = { Text("Choose from 1 minute to 7 days.") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -589,22 +796,28 @@ private fun SettingSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(vertical = 5.dp)
+            .clickable { onCheckedChange(!checked) },
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
-

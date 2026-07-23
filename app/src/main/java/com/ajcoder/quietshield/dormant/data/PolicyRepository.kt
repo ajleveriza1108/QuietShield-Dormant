@@ -38,9 +38,16 @@ class PolicyRepository(private val context: Context) {
     }
 
     suspend fun savePolicy(policy: AppPolicy) {
+        savePolicies(listOf(policy))
+    }
+
+    suspend fun savePolicies(updatedPolicies: List<AppPolicy>) {
+        if (updatedPolicies.isEmpty()) return
         context.settingsDataStore.edit { preferences ->
             val current = decodePolicies(preferences[Keys.policies].orEmpty()).toMutableMap()
-            current[policy.packageName] = policy
+            updatedPolicies.forEach { policy ->
+                current[policy.packageName] = policy
+            }
             preferences[Keys.policies] = encodePolicies(current)
         }
     }

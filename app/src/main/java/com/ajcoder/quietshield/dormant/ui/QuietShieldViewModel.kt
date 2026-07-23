@@ -122,6 +122,13 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch { policyRepository.savePolicy(policy) }
     }
 
+    fun savePolicies(apps: List<InstalledApp>, template: AppPolicy) {
+        val policies = apps
+            .filter { it.section != AppSection.CORE }
+            .map { app -> template.copy(packageName = app.packageName) }
+        viewModelScope.launch { policyRepository.savePolicies(policies) }
+    }
+
     fun refreshPermissionState() {
         usageAccess.value = hasUsageStatsAccess(getApplication())
     }

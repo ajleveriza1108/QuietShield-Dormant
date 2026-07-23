@@ -25,27 +25,36 @@ data class InstalledApp(
 
 enum class SleepMode(val label: String, val description: String) {
     STANDBY_THEN_FORCE_STOP(
-        "Standby → Force Stop",
-        "Place the app in standby, then force-stop it after the inactive timeout.",
+        "Sleep, then close",
+        "Reduce background activity first, then close the app after the second timer.",
     ),
     STANDBY_ONLY(
-        "Standby Only",
-        "Restrict background activity without force-stopping the app.",
+        "Sleep only",
+        "Reduce background activity without closing the app.",
     ),
     FORCE_STOP_ONLY(
-        "Force Stop Only",
-        "Skip standby and force-stop the app after the background timeout.",
+        "Close only",
+        "Close the app after the first timer without putting it to sleep first.",
     ),
     PROTECTED(
-        "Protected",
-        "Never manage this app automatically.",
+        "Leave this app alone",
+        "QuietShield Dormant will never manage this app automatically.",
     ),
 }
 
-enum class SyncMode(val label: String) {
-    ALLOW("Allow Sync"),
-    SMART("Smart Sync"),
-    BLOCK("No Background Sync"),
+enum class SyncMode(val label: String, val description: String) {
+    ALLOW(
+        "Always let it work",
+        "Best for messages, email, backups, and apps that must stay updated.",
+    ),
+    SMART(
+        "Let it work when needed",
+        "Allow important activity, but stop unnecessary background work.",
+    ),
+    BLOCK(
+        "Do not let it work",
+        "Best for games and apps that do not need alerts or updates.",
+    ),
 }
 
 enum class ThemeChoice(val label: String) {

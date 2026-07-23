@@ -26,11 +26,11 @@ class AppClassifier(private val application: Application) {
         val isInputMethod = packageName == inputMethodPackage
 
         val dynamicCoreReason = when (packageName) {
-            ownPackage -> "QuietShield Dormant protects itself so management remains available."
-            launcherPackage -> "This is the current Home launcher. Disabling it can remove the Home screen."
-            inputMethodPackage -> "This is the current keyboard. Disabling it can prevent text input."
-            dialerPackage -> "This is the current default phone app."
-            smsPackage -> "This is the current default SMS app."
+            ownPackage -> "QuietShield Dormant leaves itself alone so it can keep working."
+            launcherPackage -> "This app shows your Home screen. Your phone needs it."
+            inputMethodPackage -> "This is your current keyboard. Your phone needs it for typing."
+            dialerPackage -> "This is your current Phone app. QuietShield Dormant will leave it alone."
+            smsPackage -> "This is your current Messages app. QuietShield Dormant will leave it alone."
             else -> null
         }
 
@@ -45,8 +45,8 @@ class AppClassifier(private val application: Application) {
         val reason = when (section) {
             AppSection.CORE -> dynamicCoreReason ?: CorePackageRules.reasonFor(packageName)
             AppSection.SYSTEM ->
-                "Preinstalled or manufacturer-updated app. Review carefully before changing its policy."
-            AppSection.USER -> "Installed user app. Eligible for user-selected background policies."
+                "This app came with your phone. Change it carefully."
+            AppSection.USER -> "You installed this app. You can choose how QuietShield Dormant handles it."
         }
 
         return InstalledApp(

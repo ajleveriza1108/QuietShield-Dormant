@@ -30,20 +30,20 @@ object CorePackageRules {
     }
 
     fun reasonFor(packageName: String): String = when (packageName) {
-        "android" -> "Android framework package required by the operating system."
-        "com.android.systemui" -> "Controls notifications, status bar, navigation, and system dialogs."
-        "com.android.settings" -> "Provides the device Settings interface."
+        "android" -> "Your phone needs this app to run Android."
+        "com.android.systemui" -> "This app shows notifications, the status bar, and phone controls."
+        "com.android.settings" -> "This app opens and manages your phone settings."
         "com.android.permissioncontroller", "com.google.android.permissioncontroller" ->
-            "Controls runtime permissions and privacy decisions."
+            "This app controls permission and privacy choices."
         "com.android.packageinstaller", "com.google.android.packageinstaller" ->
-            "Installs and updates application packages."
+            "This app installs and updates other apps."
         "com.android.providers.downloads", "com.android.providers.downloads.ui" ->
-            "Provides Android's shared download service."
-        "com.android.providers.media" -> "Indexes and serves shared photos, audio, and video."
+            "This app handles downloads for your phone."
+        "com.android.providers.media" -> "This app helps your phone find photos, music, and videos."
         "com.android.phone", "com.android.server.telecom" ->
-            "Provides calling and telephony services."
+            "This app handles calls and mobile service."
         "com.google.android.gms" ->
-            "Provides core Google services used by notifications, accounts, location, and many apps."
-        else -> "Protected because it matches a known Android core component rule."
+            "Many apps need this for alerts, accounts, location, and sign-in."
+        else -> "Your phone needs this app, so QuietShield Dormant will always leave it alone."
     }
 }

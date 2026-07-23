@@ -1,8 +1,20 @@
 # QuietShield Dormant
 
+## Alpha 2 interface update
+
+This test build improves the app list and behavior editor:
+
+- User Apps, System Apps, and Core Apps use the full available screen.
+- User and System Apps support Select all and group behavior changes.
+- The behavior editor scrolls above the phone navigation bar.
+- Switches now stay beside their visible labels.
+- All timeout text uses correct singular and plural wording.
+- User-facing wording avoids developer terms.
+- Automatic app closing is still not active in this test build.
+
 QuietShield Dormant is a safety-first Android background-app manager. The project is inspired by the useful ideas behind standby managers, but it is being built as an original product with transparent capability reporting, conservative core-app protection, media safeguards, and per-app policies.
 
-## Current milestone: v0.1.0-alpha1 Foundation
+## Current milestone: v0.1.0-alpha2 Foundation
 
 This first milestone provides the real Android application foundation:
 
@@ -35,7 +47,7 @@ This first milestone provides the real Android application foundation:
 
 ## Honest capability status
 
-v0.1.0-alpha1 does **not** yet execute automatic standby, force-stop, disable, or enable commands. Those actions require a separately designed and verified privileged engine. The UI states this clearly so the foundation build never makes a false battery-saving claim.
+v0.1.0-alpha2 does **not** yet execute automatic standby, force-stop, disable, or enable commands. Those actions require a separately designed and verified privileged engine. The UI states this clearly so the foundation build never makes a false battery-saving claim.
 
 ## Android identity
 
@@ -62,7 +74,7 @@ Run:
 The debug APK will be copied to:
 
 ```text
-release\debug\QuietShield-Dormant-v0.1.0-alpha1-debug.apk
+release\debug\QuietShield-Dormant-v0.1.0-alpha2-debug.apk
 ```
 
 ## Safety model

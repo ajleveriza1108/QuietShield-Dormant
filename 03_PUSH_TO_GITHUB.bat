@@ -11,7 +11,7 @@ if errorlevel 1 (
 
 git add -A || goto failed
 git diff --cached --quiet
-if errorlevel 1 git commit -m "Update QuietShield Dormant foundation" || goto failed
+if errorlevel 1 git commit -m "Add full-screen lists and group behavior controls" || goto failed
 git push -u origin main || goto failed
 
 echo [PASS] QuietShield Dormant pushed to GitHub.
