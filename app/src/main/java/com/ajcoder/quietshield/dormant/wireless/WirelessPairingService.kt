@@ -135,6 +135,16 @@ class WirelessPairingService : Service(), WirelessPairingDiscovery.Callback {
             return
         }
 
+        if (!selectedEndpoint.isFresh(120_000L)) {
+            endpoint = null
+            updatePairingNotification(
+                title = "Pairing screen expired",
+                text = "Open Pair device with pairing code again. Dormant will detect the new port. [PORT-03]",
+                allowReply = false,
+            )
+            return
+        }
+
         pairingInProgress = true
         updatePairingNotification(
             title = "Pairing QuietShield Dormant",
@@ -153,8 +163,8 @@ class WirelessPairingService : Service(), WirelessPairingDiscovery.Callback {
                 is WirelessActivationResult.Failure -> {
                     updatePairingNotification(
                         title = "Pairing did not finish",
-                        text = "The code or pairing screen may have changed. Open a new pairing code and try again.",
-                        allowReply = endpoint != null,
+                        text = result.message,
+                        allowReply = endpoint?.isFresh(120_000L) == true,
                     )
                 }
             }

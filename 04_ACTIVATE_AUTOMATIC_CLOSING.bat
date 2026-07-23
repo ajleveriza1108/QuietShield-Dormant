@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 echo ============================================================
-echo QuietShield Dormant v0.2.0 Beta 1 R2 Wireless Setup
+echo QuietShield Dormant v0.2.0 Beta 1 R3 Wireless Setup
 echo ============================================================
 echo.
 echo Normal activation is completed inside the Android app.

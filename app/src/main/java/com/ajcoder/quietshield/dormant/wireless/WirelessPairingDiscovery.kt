@@ -4,12 +4,16 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
+import android.os.SystemClock
+import java.net.InetAddress
+import java.net.NetworkInterface
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Finds Android's temporary Wireless Debugging pairing service. The pairing
+ * Finds this phone's temporary Wireless Debugging pairing service. The pairing
  * port changes whenever Android opens a new pairing-code screen, so the port
- * is intentionally discovered instead of shown to the user.
+ * is discovered and verified as a local address instead of shown to the user.
  */
 class WirelessPairingDiscovery(
     context: Context,
@@ -19,7 +23,11 @@ class WirelessPairingDiscovery(
         val host: String,
         val port: Int,
         val serviceName: String,
-    )
+        val discoveredAtElapsedRealtime: Long,
+    ) {
+        fun isFresh(maxAgeMs: Long): Boolean =
+            SystemClock.elapsedRealtime() - discoveredAtElapsedRealtime <= maxAgeMs
+    }
 
     interface Callback {
         fun onSearching()
@@ -54,15 +62,16 @@ class WirelessPairingDiscovery(
 
                         override fun onServiceResolved(resolved: NsdServiceInfo) {
                             resolving.set(false)
-                            val host = resolved.host?.hostAddress.orEmpty()
+                            val address = resolved.host ?: return
                             val port = resolved.port
-                            if (host.isBlank() || port !in 1..65535) return
+                            if (port !in 1..65535 || !isLocalPhoneAddress(address)) return
                             currentServiceName = resolved.serviceName
                             callback.onEndpointChanged(
                                 Endpoint(
-                                    host = host,
+                                    host = address.hostAddress.orEmpty(),
                                     port = port,
                                     serviceName = resolved.serviceName,
+                                    discoveredAtElapsedRealtime = SystemClock.elapsedRealtime(),
                                 ),
                             )
                         }
@@ -86,7 +95,7 @@ class WirelessPairingDiscovery(
             started.set(false)
             releaseMulticastLock()
             callback.onFailure(
-                "Dormant could not look for Android's pairing screen. Turn Wi-Fi off and on, then try again.",
+                "Dormant could not look for Android's pairing screen. Turn Wi-Fi off and on, then try again. [DISCOVERY-02]",
             )
         }
 
@@ -107,7 +116,7 @@ class WirelessPairingDiscovery(
             started.set(false)
             releaseMulticastLock()
             callback.onFailure(
-                "Dormant could not start Wireless Debugging discovery. Make sure Wi-Fi is on.",
+                "Dormant could not start Wireless Debugging discovery. Make sure Wi-Fi is on. [DISCOVERY-03]",
             )
         }
     }
@@ -119,6 +128,20 @@ class WirelessPairingDiscovery(
         resolving.set(false)
         currentServiceName = null
     }
+
+    private fun isLocalPhoneAddress(address: InetAddress): Boolean {
+        if (address.isLoopbackAddress) return true
+        val target = normalizeAddress(address.hostAddress)
+        val interfaces = runCatching { NetworkInterface.getNetworkInterfaces() }.getOrNull() ?: return false
+        return Collections.list(interfaces).asSequence()
+            .filter { network -> network.isUp && !network.isLoopback }
+            .flatMap { network -> Collections.list(network.inetAddresses).asSequence() }
+            .map { local -> normalizeAddress(local.hostAddress) }
+            .any { local -> local == target }
+    }
+
+    private fun normalizeAddress(value: String?): String =
+        value.orEmpty().substringBefore('%').lowercase()
 
     private fun acquireMulticastLock() {
         multicastLock = runCatching {

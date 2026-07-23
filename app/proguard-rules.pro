@@ -8,3 +8,6 @@
 -keep class io.github.muntashirakon.adb.** { *; }
 -dontwarn android.sun.**
 -dontwarn org.conscrypt.**
+
+# LibADB loads the bundled Conscrypt provider by class name during pairing.
+-keep class org.conscrypt.** { *; }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.ajcoder.quietshield.dormant"
         minSdk = 29
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.2.0-beta1-r2"
+        versionCode = 12
+        versionName = "0.2.0-beta1-r3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -102,6 +102,8 @@ dependencies {
     // On-device Wireless Debugging pairing and connection.
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("com.github.MuntashirAkon:sun-security-android:1.1")
+    // Bundled TLS 1.3 provider avoids manufacturer-specific hidden Conscrypt failures.
+    implementation("org.conscrypt:conscrypt-android:2.5.3")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.04.01")

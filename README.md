@@ -2,7 +2,7 @@
 
 QuietShield Dormant is a local Android background-app manager with user-selected sleep and close rules, Wireless Debugging activation, media protection, safety classification, and measured beta results.
 
-## Current milestone: v0.2.0 Beta 1 R2
+## Current milestone: v0.2.0 Beta 1 R3
 
 This beta combines the planned Alpha 4, Alpha 5, Alpha 6, and Beta 1 milestones into one test build:
 
@@ -40,7 +40,7 @@ Run:
 The optimized beta APK is copied to:
 
 ```text
-release\beta\QuietShield-Dormant-v0.2.0-beta1-r2.apk
+release\beta\QuietShield-Dormant-v0.2.0-beta1-r3.apk
 ```
 
 Install it through:

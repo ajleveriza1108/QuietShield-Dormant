@@ -2,12 +2,19 @@ package com.ajcoder.quietshield.dormant.wireless
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import com.ajcoder.quietshield.dormant.engine.DormantEngineClient
 import io.github.muntashirakon.adb.AdbPairingRequiredException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.net.ConnectException
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.SocketTimeoutException
 import java.security.SecureRandom
+import javax.net.ssl.SSLException
 
 sealed interface WirelessActivationResult {
     data object Success : WirelessActivationResult
@@ -41,30 +48,49 @@ class WirelessActivationManager(private val context: Context) {
         }
         if (host.isBlank() || port !in 1..65535) {
             return@withContext WirelessActivationResult.Failure(
-                "Dormant could not find Android's current pairing screen.",
+                "Dormant could not find Android's current pairing screen. [DISCOVERY-01]",
             )
         }
         if (!pairingCode.matches(Regex("\\d{6}"))) {
             return@withContext WirelessActivationResult.Failure(
-                "Enter the six-digit pairing code shown by Android.",
+                "Enter the six-digit pairing code shown by Android. [CODE-01]",
+            )
+        }
+
+        val endpointReachable = runCatching {
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(host, port), PAIRING_SOCKET_TIMEOUT_MS)
+            }
+            true
+        }.getOrDefault(false)
+        if (!endpointReachable) {
+            return@withContext WirelessActivationResult.Failure(
+                "Android's pairing port changed or expired. Open a fresh pairing code and try again. [PORT-01]",
             )
         }
 
         val manager = runCatching {
             DormantAdbConnectionManager.getInstance(context)
-        }.getOrElse {
+        }.getOrElse { error ->
+            Log.e(TAG, "Unable to prepare ADB identity", error)
             return@withContext WirelessActivationResult.Failure(
-                "QuietShield Dormant could not prepare its private pairing identity.",
+                "Dormant could not prepare its secure pairing identity. [IDENTITY-01]",
             )
         }
 
-        val paired = runCatching {
+        val pairAttempt = runCatching {
             manager.pair(host, port, pairingCode)
-        }.getOrDefault(false)
-        if (!paired) {
+        }
+        if (pairAttempt.isFailure) {
+            val error = pairAttempt.exceptionOrNull()
+            Log.e(TAG, "Wireless pairing handshake failed", error)
+            safeDisconnect(manager)
+            return@withContext WirelessActivationResult.Failure(pairingFailureMessage(error))
+        }
+        if (pairAttempt.getOrDefault(false).not()) {
             safeDisconnect(manager)
             return@withContext WirelessActivationResult.Failure(
-                "Pairing did not complete. Keep Android's pairing-code screen open and try again.",
+                "Android did not confirm the pairing. Open a fresh code and try again. [PAIR-01]",
             )
         }
 
@@ -103,7 +129,8 @@ class WirelessActivationManager(private val context: Context) {
                 manager.autoConnect(context, 8_000)
             } catch (_: AdbPairingRequiredException) {
                 false
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
+                Log.e(TAG, "Wireless ADB connection attempt failed", error)
                 false
             }
             if (connected) return@repeat
@@ -112,7 +139,7 @@ class WirelessActivationManager(private val context: Context) {
         if (!connected) {
             safeDisconnect(manager)
             return WirelessActivationResult.Failure(
-                "Dormant could not connect. Keep Wireless Debugging on, return to its main screen, and tap Restore again.",
+                "Pairing was accepted, but Dormant could not find Android's connection service. Return to the main Wireless Debugging screen and tap Restore. [CONNECT-01]",
             )
         }
 
@@ -137,11 +164,14 @@ class WirelessActivationManager(private val context: Context) {
         val commandStarted = runCatching {
             executeShell(manager, startCommand)
             true
-        }.getOrDefault(false)
+        }.getOrElse { error ->
+            Log.e(TAG, "Unable to start Dormant shell helper", error)
+            false
+        }
         safeDisconnect(manager)
         if (!commandStarted) {
             return WirelessActivationResult.Failure(
-                "The phone accepted the wireless connection, but the automatic-closing helper did not start.",
+                "Android accepted pairing, but the automatic-closing helper did not start. [HELPER-01]",
             )
         }
 
@@ -150,8 +180,27 @@ class WirelessActivationManager(private val context: Context) {
             if (engineClient.ping()) return WirelessActivationResult.Success
         }
         return WirelessActivationResult.Failure(
-            "The automatic-closing helper did not respond. Toggle Wireless Debugging off and on, then try Restore.",
+            "The automatic-closing helper did not respond. Toggle Wireless Debugging off and on, then tap Restore. [HELPER-02]",
         )
+    }
+
+    private fun pairingFailureMessage(error: Throwable?): String {
+        val chain = generateSequence(error) { it.cause }.toList()
+        val combined = chain.joinToString(" ") { it.message.orEmpty() }.lowercase()
+        return when {
+            chain.any { it is ConnectException || it is SocketTimeoutException } ->
+                "Android's pairing port expired before the secure connection opened. Use a fresh code. [PORT-02]"
+            chain.any { it is SSLException } || "conscrypt" in combined || "tls" in combined || "exportkeyingmaterial" in combined ->
+                "The secure pairing handshake failed. R3 uses a bundled TLS provider; reopen the pairing code and retry. [TLS-01]"
+            "exchanging message" in combined || "pairing cipher" in combined ->
+                "Android rejected the code or the code expired. Open a new pairing code and enter it once. [CODE-02]"
+            "peer info" in combined ->
+                "Android stopped while saving Dormant as a paired device. Open a fresh code and retry. [PAIR-02]"
+            chain.any { it is IOException } ->
+                "The secure pairing connection closed before Android confirmed it. Open a fresh code and retry. [PAIR-03]"
+            else ->
+                "Pairing stopped unexpectedly. Open a fresh code and retry. [PAIR-99]"
+        }
     }
 
     private fun executeShell(manager: DormantAdbConnectionManager, command: String): String {
@@ -162,7 +211,6 @@ class WirelessActivationManager(private val context: Context) {
             }
         }
     }
-
 
     private fun safeDisconnect(manager: DormantAdbConnectionManager) {
         runCatching { manager.disconnect() }
@@ -176,4 +224,9 @@ class WirelessActivationManager(private val context: Context) {
 
     private fun shellQuote(value: String): String =
         "'" + value.replace("'", "'\\''") + "'"
+
+    companion object {
+        private const val TAG = "DormantWireless"
+        private const val PAIRING_SOCKET_TIMEOUT_MS = 3_000
+    }
 }

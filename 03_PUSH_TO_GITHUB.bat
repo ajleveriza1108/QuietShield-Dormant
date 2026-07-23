@@ -11,10 +11,10 @@ if errorlevel 1 (
 
 git add -A || goto failed
 git diff --cached --quiet
-if errorlevel 1 git commit -m "QuietShield Dormant v0.2.0 Beta 1 R2: automatic wireless pairing discovery" || goto failed
+if errorlevel 1 git commit -m "QuietShield Dormant v0.2.0 Beta 1 R3: automatic wireless pairing discovery" || goto failed
 git push -u origin main || goto failed
 
-echo [PASS] QuietShield Dormant Beta 1 R2 pushed to GitHub.
+echo [PASS] QuietShield Dormant Beta 1 R3 pushed to GitHub.
 pause
 exit /b 0
 
