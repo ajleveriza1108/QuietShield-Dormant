@@ -15,4 +15,4 @@ Please report security-sensitive issues privately to the repository owner rather
 
 ## Sideload-safe permission policy
 
-The Alpha 3 R5 test build does not declare Notification Listener or Accessibility services. This reduces sideload-install blocking and avoids reading notification content.
+The Alpha 3 R6 test build does not declare Notification Listener or Accessibility services. This reduces sideload-install blocking and avoids reading notification content.

@@ -2,7 +2,7 @@
 
 QuietShield Dormant is an original Android background-app manager with clear per-app choices, conservative Core App protection, music safeguards, group controls, and an optional automatic-closing test engine.
 
-## Current milestone: v0.1.0-alpha3 R5
+## Current milestone: v0.1.0-alpha3 R6
 
 ### App list and controls
 
@@ -37,7 +37,7 @@ The **Dormant** Quick Setting turns automatic closing on or pauses it. It shows 
 
 ### Automatic closing test
 
-Alpha 3 includes a USB-activated test helper. It can apply the behavior saved for explicitly selected apps while the helper is responding.
+The main automatic-closing switch is always clickable. Before setup is complete, tapping it opens a guided setup instead of showing a disabled switch. Alpha 3 includes a USB-activated test helper. It can apply the behavior saved for explicitly selected apps while the helper is responding.
 
 Test order:
 
@@ -55,7 +55,7 @@ This Alpha test does not hide or bypass banking-app security checks. Before open
 
 ## Install-safe testing change
 
-Alpha 3 R5 keeps the install-safe permission set and repairs the main app list layout. Google Play Protect can automatically block file-manager or browser installations of apps that declare this sensitive access. Music protection now uses Android audio activity instead. While audio is playing, automatic management pauses conservatively for apps with media protection enabled. Important-alert inspection is not included in this test build.
+Alpha 3 R6 keeps the install-safe permission set and repairs the main app list layout. Google Play Protect can automatically block file-manager or browser installations of apps that declare this sensitive access. Music protection now uses Android audio activity instead. While audio is playing, automatic management pauses conservatively for apps with media protection enabled. Important-alert inspection is not included in this test build.
 
 ## Android identity
 
@@ -64,7 +64,7 @@ Alpha 3 R5 keeps the install-safe permission set and repairs the main app list l
 - Minimum Android: Android 10 / API 29
 - Compile SDK: API 36
 - Target SDK: API 36
-- Version: `0.1.0-alpha3-r5`
+- Version: `0.1.0-alpha3-r6`
 
 ## Build on Windows
 
@@ -77,7 +77,7 @@ Requirements:
 The debug APK is copied to:
 
 ```text
-release\debug\QuietShield-Dormant-v0.1.0-alpha3-r5-debug.apk
+release\debug\QuietShield-Dormant-v0.1.0-alpha3-r6-debug.apk
 ```
 
 ## Safety model
@@ -98,8 +98,11 @@ release\debug\QuietShield-Dormant-v0.1.0-alpha3-r5-debug.apk
 - No claim that automatic closing is active unless the test helper responds.
 
 
-### Alpha 3 R5 interface repair
+### Alpha 3 R6 interface repair
 
+- Makes the main automatic-closing switch interactive even before setup.
+- Opens a guided setup with the app activity setting and Windows activation instructions.
+- Turns the switch on only after both requirements are verified.
 - Keeps the title and controls below the phone status bar.
 - Removes the disabled Running now chip when setup is unavailable.
 - Shows a separate Running now badge inside every app row when that app is running.

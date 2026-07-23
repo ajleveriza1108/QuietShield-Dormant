@@ -89,9 +89,14 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showGroupEditor by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showAutomaticSetupDialog by remember { mutableStateOf(false) }
 
     val selectableApps = state.visibleApps.filter { it.section != AppSection.CORE }
     val selectedApps = state.apps.filter { it.packageName in selectedPackages }
+
+    LaunchedEffect(state.automaticClosing) {
+        if (state.automaticClosing) showAutomaticSetupDialog = false
+    }
 
     LaunchedEffect(
         state.selectedSection,
@@ -115,7 +120,15 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                     themeChoice = themeChoice,
                     onThemeSelected = viewModel::setTheme,
                     onRefresh = viewModel::refreshApps,
-                    onAutomaticClosingChanged = viewModel::setAutomaticClosing,
+                    onAutomaticClosingChanged = { enabled ->
+                        if (!enabled) {
+                            viewModel.setAutomaticClosing(false)
+                        } else if (state.setupReady && state.hasUsageAccess) {
+                            viewModel.setAutomaticClosing(true)
+                        } else {
+                            showAutomaticSetupDialog = true
+                        }
+                    },
                     onAddQuickSetting = { DormantQuickTileRequest.addTile(context) },
                 )
             },
@@ -287,6 +300,52 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                 },
             )
         }
+
+
+        if (showAutomaticSetupDialog) {
+            AlertDialog(
+                onDismissRequest = { showAutomaticSetupDialog = false },
+                title = { Text("Turn on automatic closing") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("QuietShield Dormant needs two permissions before it can close selected apps automatically.")
+                        if (!state.hasUsageAccess) {
+                            Text("1. Allow QuietShield Dormant to see when apps are opened and closed.")
+                            OutlinedButton(
+                                onClick = {
+                                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    context.startActivity(intent)
+                                },
+                            ) {
+                                Text("Open app activity setting")
+                            }
+                        } else {
+                            Text("1. App activity access is ready.")
+                        }
+                        if (!state.setupReady) {
+                            Text("2. Connect this phone to your Windows computer and run 04_ACTIVATE_AUTOMATIC_CLOSING.bat from the QuietShield Dormant project folder.")
+                        } else {
+                            Text("2. Automatic closing setup is ready.")
+                        }
+                        Text("After completing the steps, tap Check and turn on.")
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.setAutomaticClosing(true) },
+                    ) {
+                        Text("Check and turn on")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAutomaticSetupDialog = false }) {
+                        Text("Not now")
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -321,7 +380,7 @@ private fun AppHeader(
                         text = when {
                             state.automaticClosing -> "Automatic closing is on"
                             state.setupReady -> "Automatic closing is paused"
-                            else -> "Automatic closing needs setup"
+                            else -> "Tap the switch to set up automatic closing"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (state.automaticClosing) {
@@ -334,7 +393,7 @@ private fun AppHeader(
                 Switch(
                     checked = state.automaticClosing,
                     onCheckedChange = onAutomaticClosingChanged,
-                    enabled = state.setupReady && state.hasUsageAccess,
+                    enabled = true,
                 )
             }
             Row(

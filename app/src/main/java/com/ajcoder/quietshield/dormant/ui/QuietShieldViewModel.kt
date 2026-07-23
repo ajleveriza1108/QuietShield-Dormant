@@ -190,21 +190,28 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
     fun setAutomaticClosing(enabled: Boolean) {
         viewModelScope.launch {
             errorMessage.value = null
+            val context = getApplication<Application>()
             if (enabled) {
-                if (!runtime.value.hasUsageAccess) {
-                    errorMessage.value = "Finish the app activity setup first."
+                val hasUsageAccess = hasUsageStatsAccess(context)
+                val setupReady = engineClient.ping()
+                runtime.value = runtime.value.copy(
+                    hasUsageAccess = hasUsageAccess,
+                    setupReady = setupReady,
+                    runningPackages = if (setupReady) engineClient.runningPackages() else emptySet(),
+                )
+                if (!hasUsageAccess) {
+                    errorMessage.value = "Allow app activity access, then tap the switch again."
                     return@launch
                 }
-                if (!engineClient.ping()) {
-                    errorMessage.value = "Run Automatic Closing Setup on your computer, then try again."
-                    updateRuntimeSnapshot()
+                if (!setupReady) {
+                    errorMessage.value = "Connect the phone to your computer and run 04_ACTIVATE_AUTOMATIC_CLOSING.bat, then tap the switch again."
                     return@launch
                 }
                 policyRepository.setAutomaticClosing(true)
-                DormantMonitorService.start(getApplication())
+                DormantMonitorService.start(context)
             } else {
                 policyRepository.setAutomaticClosing(false)
-                DormantMonitorService.stop(getApplication())
+                DormantMonitorService.stop(context)
             }
             updateRuntimeSnapshot()
         }
