@@ -18,14 +18,14 @@ if not exist "%ADB%" (
   )
 )
 
-if not exist "release\debug\QuietShield-Dormant-v0.1.0-alpha3-debug.apk" (
+if not exist "release\debug\QuietShield-Dormant-v0.1.0-alpha3-r4-debug.apk" (
   echo [FAILED] Build the APK first using 01_BUILD_DEBUG.bat.
   pause
   exit /b 1
 )
 
 "%ADB%" devices
-"%ADB%" install -r "release\debug\QuietShield-Dormant-v0.1.0-alpha3-debug.apk"
+"%ADB%" install -r "release\debug\QuietShield-Dormant-v0.1.0-alpha3-r4-debug.apk"
 if errorlevel 1 (
   echo [FAILED] APK installation failed.
   pause

@@ -4,7 +4,6 @@ import android.app.Application
 import android.app.AppOpsManager
 import android.content.Context
 import android.os.Process
-import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ajcoder.quietshield.dormant.data.AppCatalogRepository
@@ -29,7 +28,6 @@ data class RuntimeState(
     val runningPackages: Set<String> = emptySet(),
     val showRunningOnly: Boolean = false,
     val hasUsageAccess: Boolean = false,
-    val hasNotificationAccess: Boolean = false,
 )
 
 data class AppUiState(
@@ -44,7 +42,6 @@ data class AppUiState(
     val runningPackages: Set<String> = emptySet(),
     val showRunningOnly: Boolean = false,
     val hasUsageAccess: Boolean = false,
-    val hasNotificationAccess: Boolean = false,
 ) {
     val visibleApps: List<InstalledApp>
         get() = apps.filter { app ->
@@ -77,7 +74,6 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
     private val runtime = MutableStateFlow(
         RuntimeState(
             hasUsageAccess = hasUsageStatsAccess(application),
-            hasNotificationAccess = hasNotificationAccess(application),
         ),
     )
 
@@ -122,7 +118,6 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
             runningPackages = runtimeState.runningPackages,
             showRunningOnly = runtimeState.showRunningOnly,
             hasUsageAccess = runtimeState.hasUsageAccess,
-            hasNotificationAccess = runtimeState.hasNotificationAccess,
         )
     }.stateIn(
         viewModelScope,
@@ -189,7 +184,6 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
         val context = getApplication<Application>()
         runtime.value = runtime.value.copy(
             hasUsageAccess = hasUsageStatsAccess(context),
-            hasNotificationAccess = hasNotificationAccess(context),
         )
     }
 
@@ -199,10 +193,6 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
             if (enabled) {
                 if (!runtime.value.hasUsageAccess) {
                     errorMessage.value = "Finish the app activity setup first."
-                    return@launch
-                }
-                if (!runtime.value.hasNotificationAccess) {
-                    errorMessage.value = "Finish the music and alert protection setup first."
                     return@launch
                 }
                 if (!engineClient.ping()) {
@@ -243,7 +233,6 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
             setupReady = setupReady,
             runningPackages = runningPackages,
             hasUsageAccess = hasUsageStatsAccess(context),
-            hasNotificationAccess = hasNotificationAccess(context),
         )
         DormantQuickTileRequest.requestTileRefresh(context)
     }
@@ -258,8 +247,4 @@ class QuietShieldViewModel(application: Application) : AndroidViewModel(applicat
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    private fun hasNotificationAccess(context: Context): Boolean {
-        return NotificationManagerCompat.getEnabledListenerPackages(context)
-            .contains(context.packageName)
-    }
 }

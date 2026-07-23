@@ -12,3 +12,7 @@ Please report security-sensitive issues privately to the repository owner rather
 - No silent app disabling.
 - No remote command execution.
 - No cloud upload of installed-app inventory or notification contents.
+
+## Sideload-safe permission policy
+
+The Alpha 3 R4 test build does not declare Notification Listener or Accessibility services. This reduces sideload-install blocking and avoids reading notification content.

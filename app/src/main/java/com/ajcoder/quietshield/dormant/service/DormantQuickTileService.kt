@@ -6,7 +6,6 @@ import android.os.Process
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
-import androidx.core.app.NotificationManagerCompat
 import com.ajcoder.quietshield.dormant.data.PolicyRepository
 import com.ajcoder.quietshield.dormant.engine.DormantEngineClient
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +33,7 @@ class DormantQuickTileService : TileService() {
         updateJob = scope.launch {
             val repository = PolicyRepository(applicationContext)
             val engineAvailable = DormantEngineClient(applicationContext).ping()
-            val ready = engineAvailable && hasUsageAccess() && hasNotificationAccess()
+            val ready = engineAvailable && hasUsageAccess()
             val enabled = repository.automaticClosing.first()
 
             when {
@@ -81,8 +80,7 @@ class DormantQuickTileService : TileService() {
             val repository = PolicyRepository(applicationContext)
             val enabled = repository.automaticClosing.first()
             val ready = DormantEngineClient(applicationContext).ping() &&
-                hasUsageAccess() &&
-                hasNotificationAccess()
+                hasUsageAccess()
             withContext(Dispatchers.Main) {
                 updateTileState(ready, enabled && ready)
             }
@@ -121,9 +119,6 @@ class DormantQuickTileService : TileService() {
         ) == AppOpsManager.MODE_ALLOWED
     }
 
-    private fun hasNotificationAccess(): Boolean {
-        return NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
-    }
 
     private fun newScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 }

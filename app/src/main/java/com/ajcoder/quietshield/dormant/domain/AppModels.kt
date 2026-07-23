@@ -49,7 +49,7 @@ enum class SyncMode(val label: String, val description: String) {
     ),
     SMART(
         "Let it work when needed",
-        "Leave it alone while it is playing, downloading, or showing an important alert.",
+        "Give it extra time before closing it. Playing audio is always protected.",
     ),
     BLOCK(
         "Do not let it work",

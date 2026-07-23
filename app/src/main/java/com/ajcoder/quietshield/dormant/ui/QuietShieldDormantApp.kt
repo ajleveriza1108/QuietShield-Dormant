@@ -127,9 +127,6 @@ fun QuietShieldDormantApp(viewModel: QuietShieldViewModel) {
                 if (!state.hasUsageAccess) {
                     UsageSetupBanner(onPermissionReturned = viewModel::refreshPermissionState)
                 }
-                if (!state.hasNotificationAccess) {
-                    AlertSetupBanner(onPermissionReturned = viewModel::refreshPermissionState)
-                }
                 state.errorMessage?.let { message ->
                     InfoCard(
                         text = message,
@@ -331,7 +328,7 @@ private fun AppHeader(
                 Switch(
                     checked = state.automaticClosing,
                     onCheckedChange = onAutomaticClosingChanged,
-                    enabled = state.setupReady && state.hasUsageAccess && state.hasNotificationAccess,
+                    enabled = state.setupReady && state.hasUsageAccess,
                 )
             }
             Row(
@@ -400,35 +397,6 @@ private fun UsageSetupBanner(onPermissionReturned: () -> Unit) {
                         data = Uri.parse("package:${context.packageName}")
                     }
                     context.startActivity(intent)
-                },
-            ) { Text("Set up") }
-            TextButton(onClick = onPermissionReturned) { Text("Check") }
-        }
-    }
-}
-
-@Composable
-private fun AlertSetupBanner(onPermissionReturned: () -> Unit) {
-    val context = LocalContext.current
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Allow QuietShield Dormant to recognize music, downloads, and important alerts.",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            TextButton(
-                onClick = {
-                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                 },
             ) { Text("Set up") }
             TextButton(onClick = onPermissionReturned) { Text("Check") }

@@ -2,7 +2,7 @@
 
 QuietShield Dormant is an original Android background-app manager with clear per-app choices, conservative Core App protection, music safeguards, group controls, and an optional automatic-closing test engine.
 
-## Current milestone: v0.1.0-alpha3 R2
+## Current milestone: v0.1.0-alpha3 R4
 
 ### App list and controls
 
@@ -43,7 +43,7 @@ Test order:
 
 1. Build with `01_BUILD_DEBUG.bat`.
 2. Install with `02_INSTALL_DEBUG_TO_PHONE.bat`.
-3. In the app, finish the two setup cards for app activity and music/alert protection.
+3. In the app, allow app activity access.
 4. Connect one unlocked phone by USB.
 5. Run `04_ACTIVATE_AUTOMATIC_CLOSING.bat`.
 6. Select a nonessential test app and save **Close only** with a short timer.
@@ -53,6 +53,10 @@ To stop the test helper, run `05_STOP_AUTOMATIC_CLOSING.bat`.
 
 This Alpha test does not hide or bypass banking-app security checks. Before opening a banking app, stop the test helper and turn off USB debugging and Developer Options.
 
+## Install-safe testing change
+
+Alpha 3 R4 removes the Notification Listener service from the sideloaded test build. Google Play Protect can automatically block file-manager or browser installations of apps that declare this sensitive access. Music protection now uses Android audio activity instead. While audio is playing, automatic management pauses conservatively for apps with media protection enabled. Important-alert inspection is not included in this test build.
+
 ## Android identity
 
 - Application ID: `com.ajcoder.quietshield.dormant`
@@ -60,7 +64,7 @@ This Alpha test does not hide or bypass banking-app security checks. Before open
 - Minimum Android: Android 10 / API 29
 - Compile SDK: API 36
 - Target SDK: API 36
-- Version: `0.1.0-alpha3`
+- Version: `0.1.0-alpha3-r4`
 
 ## Build on Windows
 
@@ -73,7 +77,7 @@ Requirements:
 The debug APK is copied to:
 
 ```text
-release\debug\QuietShield-Dormant-v0.1.0-alpha3-debug.apk
+release\debug\QuietShield-Dormant-v0.1.0-alpha3-r4-debug.apk
 ```
 
 ## Safety model
@@ -82,7 +86,7 @@ release\debug\QuietShield-Dormant-v0.1.0-alpha3-debug.apk
 - **System Apps:** configurable with caution and never changed automatically by classification alone.
 - **Core Apps:** visible but permanently locked.
 - No app is managed until the user saves a non-protected behavior.
-- Music and active media are protected when the required access is enabled.
+- Music and active media are protected conservatively without reading notification content.
 - No automatic app disabling is included in this Alpha.
 
 ## Development boundaries

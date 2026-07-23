@@ -6,12 +6,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.media.session.MediaController
-import android.media.session.MediaSessionManager
+import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -41,7 +39,7 @@ class DormantMonitorService : Service() {
     private lateinit var policyRepository: PolicyRepository
     private lateinit var engineClient: DormantEngineClient
     private lateinit var usageStatsManager: UsageStatsManager
-    private lateinit var mediaSessionManager: MediaSessionManager
+    private lateinit var audioManager: AudioManager
     private lateinit var powerManager: PowerManager
 
     @Volatile
@@ -61,7 +59,7 @@ class DormantMonitorService : Service() {
         policyRepository = PolicyRepository(applicationContext)
         engineClient = DormantEngineClient(applicationContext)
         usageStatsManager = getSystemService(UsageStatsManager::class.java)
-        mediaSessionManager = getSystemService(MediaSessionManager::class.java)
+        audioManager = getSystemService(AudioManager::class.java)
         powerManager = getSystemService(PowerManager::class.java)
 
         createNotificationChannel()
@@ -155,8 +153,7 @@ class DormantMonitorService : Service() {
 
     private suspend fun applyPolicies(now: Long) {
         if (policies.isEmpty()) return
-        val activeAlerts = DormantNotificationListener.activePackages.value
-        val playingPackages = activeMediaPackages()
+        val mediaPlaying = isMediaPlaying()
 
         policies.values.forEach { policy ->
             val packageName = policy.packageName
@@ -164,9 +161,7 @@ class DormantMonitorService : Service() {
             if (packageName == currentForegroundPackage || policy.sleepMode == SleepMode.PROTECTED) return@forEach
             if (policy.syncMode == SyncMode.ALLOW) return@forEach
 
-            val protectedNow =
-                (policy.mediaProtection && packageName in playingPackages) ||
-                    (policy.syncMode == SyncMode.SMART && packageName in activeAlerts)
+            val protectedNow = policy.mediaProtection && mediaPlaying
             if (protectedNow) {
                 backgroundSince[packageName] = now
                 actionStates.remove(packageName)
@@ -215,24 +210,8 @@ class DormantMonitorService : Service() {
         }
     }
 
-    private fun activeMediaPackages(): Set<String> {
-        val listener = ComponentName(this, DormantNotificationListener::class.java)
-        return runCatching {
-            mediaSessionManager.getActiveSessions(listener)
-                .asSequence()
-                .filter(::isPlaying)
-                .map { it.packageName }
-                .toSet()
-        }.getOrDefault(emptySet())
-    }
-
-    private fun isPlaying(controller: MediaController): Boolean {
-        return when (controller.playbackState?.state) {
-            android.media.session.PlaybackState.STATE_PLAYING,
-            android.media.session.PlaybackState.STATE_BUFFERING,
-            android.media.session.PlaybackState.STATE_CONNECTING -> true
-            else -> false
-        }
+    private fun isMediaPlaying(): Boolean {
+        return runCatching { audioManager.isMusicActive }.getOrDefault(false)
     }
 
     private fun createNotificationChannel() {
