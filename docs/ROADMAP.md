@@ -1,6 +1,6 @@
 # QuietShield Dormant roadmap
 
-## Completed in v0.2.0 Beta 1 R3
+## Completed in v0.2.0 Beta 1 R4
 
 - Wireless pairing and helper restoration
 - Accurate, user-friendly runtime states
@@ -33,3 +33,5 @@
 - No measurable excessive background drain from Dormant
 - Optimized APK reviewed if above 18 MB
 - Every supported device family has a documented result or an explicit limitation
+
+- Beta 1 R4: helper launch repair after successful wireless pairing; PID-safe restart, stable /data/local/tmp classpath, bounded ADB stream handling, and helper diagnostics.

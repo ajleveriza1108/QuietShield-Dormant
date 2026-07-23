@@ -2,7 +2,7 @@
 
 QuietShield Dormant is a local Android background-app manager with user-selected sleep and close rules, Wireless Debugging activation, media protection, safety classification, and measured beta results.
 
-## Current milestone: v0.2.0 Beta 1 R3
+## Current milestone: v0.2.0 Beta 1 R4
 
 This beta combines the planned Alpha 4, Alpha 5, Alpha 6, and Beta 1 milestones into one test build:
 
@@ -23,6 +23,11 @@ This beta combines the planned Alpha 4, Alpha 5, Alpha 6, and Beta 1 milestones 
 - Dark AMOLED, Dark OLED, Dirty White, and Follow System themes
 - Optimized beta APK with R8 and resource shrinking
 
+
+### R4 helper-launch repair
+
+R4 fixes the stage after Android accepts Wireless Debugging pairing. It removes the self-matching `pkill -f` launcher, restarts only the PID previously written by Dormant, copies the helper APK to `/data/local/tmp`, avoids treating LibADB's normal no-output stream close as a command failure, waits for the helper response before disconnecting, and reports a specific helper diagnostic code when startup still fails.
+
 ## Important beta limitation
 
 Automatic closing still requires Android's Wireless Debugging authority. The helper stops when the phone fully restarts and Dormant must restore it. The beta attempts restoration when Android allows it, but the user may still need to turn Wireless Debugging on and tap Restore.
@@ -40,7 +45,7 @@ Run:
 The optimized beta APK is copied to:
 
 ```text
-release\beta\QuietShield-Dormant-v0.2.0-beta1-r3.apk
+release\beta\QuietShield-Dormant-v0.2.0-beta1-r4.apk
 ```
 
 Install it through:

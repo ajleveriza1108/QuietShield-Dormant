@@ -1,4 +1,4 @@
-# QuietShield Dormant v0.2.0 Beta 1 R3 test plan
+# QuietShield Dormant v0.2.0 Beta 1 R4 test plan
 
 Use a secondary or carefully backed-up phone first. Begin with harmless shopping apps or games.
 

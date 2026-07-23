@@ -29,3 +29,8 @@ A small recovery service attempts to restore a saved pairing after restart or ap
 
 A short-lived foreground service uses Android network service discovery to watch for the temporary `_adb-tls-pairing._tcp.` service while the system pairing-code screen is open. The changing address and port stay internal. A direct-reply notification accepts only the six-digit code, pairs the private Dormant identity, discovers the normal secure connection, starts the helper, and then stops the pairing service.
 
+
+
+## Helper launch reliability
+
+The wireless connection starts the helper from a copy of the installed APK stored under `/data/local/tmp`. Dormant records the helper PID and only stops that verified previous PID during restoration; it does not use a broad `pkill -f` pattern. The ADB shell command is considered dispatched when the one-shot shell closes, even when it produces no output, and Dormant confirms success only after the loopback helper answers an authenticated ping.

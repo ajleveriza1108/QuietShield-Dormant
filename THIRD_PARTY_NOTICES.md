@@ -1,6 +1,6 @@
 # Third-party notices
 
-QuietShield Dormant Beta 1 R3 uses the following open-source components for on-device Wireless Debugging pairing:
+QuietShield Dormant Beta 1 R4 uses the following open-source components for on-device Wireless Debugging pairing:
 
 - **libadb-android 3.1.1**, copyright Muntashir Al-Islam, used under the Apache License 2.0 option.
 - **sun-security-android 1.1**, copyright Muntashir Al-Islam, used under its published open-source license.
